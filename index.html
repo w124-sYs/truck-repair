@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -107,6 +108,7 @@
       <div class="form-grid">
         <div class="field"><label>修理工姓名 *</label><input id="rWorker" placeholder="如：张三"></div>
         <div class="field"><label>车牌号 *</label><input id="rPlate" placeholder="如：鲁A12345"></div>
+        <div class="field"><label>客户名称</label><input id="rCustomer" placeholder="选填"></div>
         <div class="field"><label>修理项目 *</label><input id="rItem" placeholder="如：更换刹车片"></div>
       </div>
       <div style="margin-top:16px">
@@ -125,13 +127,15 @@
         <span style="color:var(--muted);font-size:12px">（工时费 + 配件售价自动合计）</span>
       </div>
       <div class="actions" style="margin-top:16px">
-        <button class="btn btn-primary" onclick="addRepair()">保存记录</button>
+        <button class="btn btn-primary" id="repairSaveBtn" onclick="addRepair()">保存记录</button>
         <button class="btn btn-ghost" onclick="clearRepairForm()">清空</button>
+        <button class="btn btn-ghost" id="repairCancelBtn" style="display:none" onclick="cancelEditRepair()">取消编辑</button>
       </div>
     </div>
     <div class="panel">
       <h2>📋 修理记录明细</h2>
       <div class="toolbar">
+        <input id="rFilterKw" placeholder="🔍 关键词搜索" oninput="renderRepair()">
         <input id="rFilterWorker" placeholder="按修理工筛选" oninput="renderRepair()">
         <input id="rFilterPlate" placeholder="按车牌号筛选" oninput="renderRepair()">
         <input id="rFilterDate" type="date" onchange="renderRepair()">
@@ -160,13 +164,15 @@
         <div class="field"><label>备注</label><input id="pNote" placeholder="选填"></div>
       </div>
       <div class="actions" style="margin-top:16px">
-        <button class="btn btn-primary" onclick="addPurchase()">保存记录</button>
+        <button class="btn btn-primary" id="purchaseSaveBtn" onclick="addPurchase()">保存记录</button>
         <button class="btn btn-ghost" onclick="clearPurchaseForm()">清空</button>
+        <button class="btn btn-ghost" id="purchaseCancelBtn" style="display:none" onclick="cancelEditPurchase()">取消编辑</button>
       </div>
     </div>
     <div class="panel">
       <h2>📋 采购记录明细</h2>
       <div class="toolbar">
+        <input id="pFilterName" placeholder="按名称搜索" oninput="renderPurchase()">
         <input id="pFilterSupplier" placeholder="按供应商筛选" oninput="renderPurchase()">
         <input id="pFilterDate" type="date" onchange="renderPurchase()">
         <button class="btn btn-ghost btn-sm" onclick="resetPurchaseFilter()">重置筛选</button>
@@ -212,6 +218,36 @@
       </div>
       <div style="overflow-x:auto" id="financeTableWrap"></div>
     </div>
+
+    <div class="panel">
+      <h2>👷 修理工工时提成
+        <div class="actions">
+          <button class="btn btn-green btn-sm" onclick="exportWorkerStat()">⬇ 导出Excel</button>
+        </div>
+      </h2>
+      <div class="toolbar" style="margin-bottom:12px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px">提成比例(%)：
+          <input id="commissionRate" type="number" step="1" min="0" max="100" value="50" style="width:80px" onchange="saveCommission()">
+        </label>
+        <span style="color:var(--muted);font-size:12px">提成 = 工时费 × 比例</span>
+        <span style="flex:1"></span>
+      </div>
+      <div style="overflow-x:auto" id="workerStatWrap"></div>
+    </div>
+
+    <div class="panel">
+      <h2>💼 日常开支（工资、水电、房租等）</h2>
+      <div class="form-grid">
+        <div class="field"><label>开支项目 *</label><input id="eItem" placeholder="如：工资、水电费、房租"></div>
+        <div class="field"><label>金额(元) *</label><input id="eAmount" type="number" step="0.01" min="0" placeholder="0"></div>
+        <div class="field"><label>日期 *</label><input id="eDate" type="date"></div>
+        <div class="field"><label>备注</label><input id="eNote" placeholder="选填"></div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="addExpense()">➕ 记一笔开支</button>
+      </div>
+      <div style="overflow-x:auto;margin-top:16px" id="expenseTableWrap"></div>
+    </div>
   </div>
 </div>
 
@@ -227,10 +263,12 @@ function loadData(){
     if(raw){
       const d = JSON.parse(raw);
       if(!d.inventory) d.inventory = [];
+      if(!d.expenses) d.expenses = [];
+      if(!d.commissionRate && d.commissionRate!==0) d.commissionRate = 50;
       return d;
     }
   }catch(e){ console.error(e); }
-  return { repairs:[], purchases:[], inventory:[] };
+  return { repairs:[], purchases:[], inventory:[], expenses:[], commissionRate:50 };
 }
 function saveData(){
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
@@ -290,6 +328,7 @@ function switchTab(tab, el){
 
 // ================= 修理统计 =================
 let partRowSeq = 0;
+let editingRepairId = null;
 
 // 中文数字转阿拉伯数字（如“三”→“3”），返回 null 表示不是中文数字
 function cnNum(s){
@@ -482,6 +521,32 @@ function addRepair(){
   const item = document.getElementById('rItem').value.trim();
   if(!worker || !plate || !item){ toast('请填写修理工、车牌号、修理项目'); return; }
   const parts = collectParts();
+
+  if(editingRepairId){
+    // 编辑模式：先归还旧记录库存，再按新记录扣库存
+    const old = state.repairs.find(r=>r.id===editingRepairId);
+    if(old && old.parts){ old.parts.forEach(p=>stockIn(p.name, p.qty)); }
+    // 校验新配件库存
+    for(const p of parts){
+      const inv = findInv(p.name);
+      if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足，无法保存`); return; }
+    }
+    for(const p of parts){ stockOut(p.name, p.qty); }
+    const labor = parseFloat(document.getElementById('rHourPrice').value)||0;
+    const total = recalcTotal();
+    Object.assign(old, {
+      worker, plate, item, parts, labor, cost: total,
+      customer: document.getElementById('rCustomer').value.trim(),
+      date: document.getElementById('rDate').value || today(),
+      note: document.getElementById('rNote').value.trim(),
+    });
+    editingRepairId = null;
+    document.getElementById('repairSaveBtn').textContent = '💾 保存记录';
+    saveData(); clearRepairForm(); renderRepair(); renderInventory(); toast('✅ 修理记录已更新');
+    return;
+  }
+
+  // 新增模式
   // 先校验库存是否充足
   for(const p of parts){
     const inv = findInv(p.name);
@@ -496,23 +561,61 @@ function addRepair(){
     item, parts,
     labor,
     cost: total, // 总计金额
+    customer: document.getElementById('rCustomer').value.trim(),
     date: document.getElementById('rDate').value || today(),
     note: document.getElementById('rNote').value.trim(),
   });
   saveData(); clearRepairForm(); renderRepair(); renderInventory(); toast('✅ 修理记录已保存，配件已扣减库存');
 }
+// 编辑修理记录：回填表单
+function editRepair(id){
+  const r = state.repairs.find(x=>x.id===id);
+  if(!r) return;
+  editingRepairId = id;
+  document.getElementById('rWorker').value = r.worker||'';
+  document.getElementById('rPlate').value = r.plate||'';
+  document.getElementById('rCustomer').value = r.customer||'';
+  document.getElementById('rItem').value = r.item||'';
+  document.getElementById('rHourPrice').value = r.labor||'';
+  document.getElementById('rDate').value = r.date||today();
+  document.getElementById('rNote').value = r.note||'';
+  // 回填配件行
+  document.getElementById('repairPartsList').innerHTML = '';
+  partRowSeq = 0;
+  if(r.parts && r.parts.length){
+    r.parts.forEach(p=>addPartRow(p.name, p.qty));
+  }
+  recalcTotal();
+  document.getElementById('repairSaveBtn').textContent = '💾 保存修改';
+  document.getElementById('repairCancelBtn').style.display = '';
+  switchTab('repair', document.querySelector('.tab'));
+  document.getElementById('repairTab').scrollIntoView({behavior:'smooth'});
+  toast('已载入记录，修改后点“保存修改”');
+}
+function cancelEditRepair(){
+  editingRepairId = null;
+  document.getElementById('repairSaveBtn').textContent = '💾 保存记录';
+  document.getElementById('repairCancelBtn').style.display = 'none';
+  clearRepairForm();
+  toast('已取消编辑');
+}
 function clearRepairForm(){
-  ['rWorker','rPlate','rItem','rHourPrice','rNote'].forEach(id=>document.getElementById(id).value='');
+  ['rWorker','rPlate','rCustomer','rItem','rHourPrice','rNote'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('rDate').value = today();
   document.getElementById('repairPartsList').innerHTML = '';
   document.getElementById('rTotal').textContent = fmtMoney(0);
   partRowSeq = 0;
+  editingRepairId = null;
+  document.getElementById('repairSaveBtn').textContent = '💾 保存记录';
+  document.getElementById('repairCancelBtn').style.display = 'none';
 }
 function renderRepair(){
+  const kw = document.getElementById('rFilterKw').value.trim();
   const wf = document.getElementById('rFilterWorker').value.trim();
   const pf = document.getElementById('rFilterPlate').value.trim();
   const df = document.getElementById('rFilterDate').value;
   let list = state.repairs.slice().sort((a,b)=>b.date.localeCompare(a.date) || (a.id>b.id?-1:1));
+  if(kw) list = list.filter(r=>[r.worker,r.plate,r.item,r.note].join(' ').includes(kw));
   if(wf) list = list.filter(r=>r.worker.includes(wf));
   if(pf) list = list.filter(r=>r.plate.includes(pf));
   if(df) list = list.filter(r=>r.date===df);
@@ -546,6 +649,7 @@ function renderRepair(){
       <td class="money">${fmtMoney(r.cost)}</td>
       <td>${esc(noteStr)}</td>
       <td>
+        <button class="btn btn-ghost btn-sm" onclick="editRepair('${r.id}')">✏️ 编辑</button>
         <button class="btn btn-print btn-sm" onclick="printOne('${r.id}')">🖨 打印</button>
         <button class="btn btn-danger btn-sm" onclick="delRepair('${r.id}')">删除</button>
       </td>
@@ -564,6 +668,7 @@ function renderRepair(){
     </table>`;
 }
 function resetRepairFilter(){
+  document.getElementById('rFilterKw').value='';
   document.getElementById('rFilterWorker').value='';
   document.getElementById('rFilterPlate').value='';
   document.getElementById('rFilterDate').value='';
@@ -587,27 +692,74 @@ function exportRepair(){
 }
 
 // ================= 打印功能 =================
+// 金额转中文大写
+function rmbUpper(n){
+  n = Math.round((Number(n)||0)*100)/100;
+  if(n===0) return '零元整';
+  const digits = ['零','壹','贰','叁','肆','伍','陆','柒','捌','玖'];
+  const units = ['','拾','佰','仟'];
+  const bigUnits = ['','万','亿'];
+  let yuan = Math.floor(n);
+  let jiao = Math.round((n - yuan)*100);
+  let result = '';
+  if(yuan>0){
+    let str = String(yuan);
+    let len = str.length;
+    let group = [];
+    for(let i=len; i>0; i-=4){
+      let start = Math.max(0, i-4);
+      group.unshift(str.slice(start, i));
+    }
+    group.forEach((g, gi)=>{
+      let gStr = '';
+      let zeroFlag = false;
+      for(let j=0; j<g.length; j++){
+        let d = parseInt(g[j]);
+        let pos = g.length-1-j;
+        if(d===0){ zeroFlag = true; }
+        else {
+          if(zeroFlag && gStr) gStr += '零';
+          gStr += digits[d] + units[pos];
+          zeroFlag = false;
+        }
+      }
+      if(gStr){
+        result += gStr + bigUnits[group.length-1-gi];
+      }
+    });
+    result += '元';
+  }
+  if(jiao===0){ result += '整'; }
+  else {
+    let jiaoNum = Math.floor(jiao/10);
+    let fenNum = jiao%10;
+    if(jiaoNum>0) result += digits[jiaoNum] + '角';
+    if(fenNum>0) result += digits[fenNum] + '分';
+  }
+  return result;
+}
+
 function buildPrintHTML(title, rowsHtml){
   return `
     <style>
-      *{font-family:"Microsoft YaHei","PingFang SC",sans-serif;}
-      .print-head{text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:16px;}
-      .print-head h1{font-size:20px; margin:0 0 4px;}
-      .print-head .meta{font-size:12px; color:#555;}
+      *{font-family:"Microsoft YaHei","PingFang SC",sans-serif; box-sizing:border-box;}
+      body{background:#fff;}
+      .settle{width:100%; max-width:210mm; margin:0 auto; border:1px solid #000; padding:14px 16px; font-size:13px; color:#000;}
+      .settle h1{text-align:center; font-size:20px; letter-spacing:2px; margin:0 0 4px;}
+      .settle .sub{font-size:12px; margin-bottom:10px;}
       table{width:100%; border-collapse:collapse; font-size:13px;}
-      th,td{border:1px solid #333; padding:7px 8px; text-align:left;}
-      th{background:#eee;}
-      .sum td{font-weight:700; background:#f5f5f5;}
-      .print-foot{margin-top:20px; font-size:12px; color:#555;}
-      .sign{display:flex; justify-content:space-between; margin-top:50px; font-size:13px;}
+      th,td{border:1px solid #000; padding:5px 6px; text-align:left; vertical-align:middle;}
+      .lbl{background:#f2f2f2; font-weight:600; white-space:nowrap;}
+      .sec-title{font-weight:700; margin:10px 0 4px;}
+      .tips{font-size:11px; line-height:1.6; color:#333;}
+      .sign{display:flex; justify-content:space-between; margin-top:14px; font-size:12px;}
+      .sign .addr{line-height:1.8;}
     </style>
-    <div class="print-head">
-      <h1>货车修理厂维修单</h1>
-      <div class="meta">${title}</div>
+    <div class="settle">
+      <h1>智维宝修服务有限公司 维修结算单</h1>
+      <div class="sub">结算单委托书号：</div>
+      ${rowsHtml}
     </div>
-    ${rowsHtml}
-    <div class="print-foot">打印时间：${new Date().toLocaleString('zh-CN')}</div>
-    <div class="sign"><span>修理工签字：__________</span><span>客户签字：__________</span></div>
   `;
 }
 function doPrint(html){
@@ -615,21 +767,73 @@ function doPrint(html){
   window.print();
 }
 
-// 打印单条修理记录
+// 打印单条修理记录（维修结算单格式）
 function printOne(id){
   const r = state.repairs.find(x=>x.id===id);
   if(!r) return;
   const partsStr = (r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}×${p.qty}`).join('、') : '';
+  // 材料费 = 配件售价合计；工时费 = r.labor；应收金额 = 材料费+工时费 = r.cost
+  const materialFee = (r.parts&&r.parts.length)? r.parts.reduce((s,p)=>{ const inv=findInv(p.name); const sale=inv?inv.sale:0; return s+(sale*p.qty); },0) : 0;
+  const laborFee = r.labor||0;
+  const total = r.cost||0;
   const rowsHtml = `
     <table>
-      <tr><th style="width:120px">修理日期</th><td>${esc(r.date)}</td><th style="width:120px">车牌号</th><td>${esc(r.plate)}</td></tr>
-      <tr><th>修理工</th><td colspan="3">${esc(r.worker)}</td></tr>
-      <tr><th>修理项目</th><td colspan="3">${esc(r.item)}</td></tr>
-      <tr><th>所用配件</th><td colspan="3">${esc(partsStr)}</td></tr>
-      <tr><th>工时费</th><td class="money">${fmtMoney(r.labor||0)}</td><th>金额</th><td class="money">${fmtMoney(r.cost)}</td></tr>
-      <tr><th>备注</th><td colspan="3">${esc(r.note)}</td></tr>
-    </table>`;
-  doPrint(buildPrintHTML(`单条记录 — 车牌 ${esc(r.plate)}`, rowsHtml));
+      <tr>
+        <td class="lbl">维修单号</td><td>${esc(r.id)}</td>
+        <td class="lbl">车牌号码</td><td>${esc(r.plate)}</td>
+        <td class="lbl">维修类型</td><td>机修</td>
+        <td class="lbl">送修时间</td><td>${esc(r.date)}</td>
+      </tr>
+      <tr>
+        <td class="lbl">客户名称</td><td>${esc(r.customer||'')}</td>
+        <td class="lbl">行驶里程</td><td></td>
+        <td class="lbl">完工时间</td><td>${esc(r.date)}</td>
+        <td class="lbl"></td><td></td>
+      </tr>
+      <tr>
+        <td class="lbl">车型</td><td></td>
+        <td class="lbl">送修电话</td><td></td>
+        <td class="lbl">开单人</td><td>${esc(r.worker)}</td>
+        <td class="lbl"></td><td></td>
+      </tr>
+    </table>
+    <div class="sec-title">修理项目：${esc(r.item)}${partsStr?'　｜　所用配件：'+esc(partsStr):''}</div>
+    <div class="sec-title">费用结算：</div>
+    <table>
+      <tr>
+        <td class="lbl">材料费合计</td><td>${fmtMoney(materialFee)}</td>
+        <td class="lbl">外加工费</td><td>0</td>
+        <td class="lbl">材料加工时费</td><td>0</td>
+      </tr>
+      <tr>
+        <td class="lbl">工时费合计</td><td>${fmtMoney(laborFee)}</td>
+        <td class="lbl">应收金额</td><td>${fmtMoney(total)}</td>
+        <td class="lbl"></td><td></td>
+      </tr>
+      <tr>
+        <td class="lbl">优惠金额</td><td>0</td>
+        <td class="lbl">已结金额</td><td></td>
+        <td class="lbl">未结金额</td><td></td>
+      </tr>
+      <tr>
+        <td class="lbl">大写</td><td colspan="5">${rmbUpper(total)}</td>
+      </tr>
+    </table>
+    <div class="sec-title">温馨提示：</div>
+    <div class="tips">
+      1、保养类质保7天或2000公里；换件类质保一个月；大修类质保一个月。<br>
+      2、机动车维修质保期期限，从维修竣工出厂之日起计算，保证期中行驶里程和日期指标，以先到达为准。<br>
+      3、更换发动机总成或者基础机质保3个月，出厂一个月或者1000公里时（先到其中之一为准）需回本厂更换机油保养，否则视为放弃质保！
+    </div>
+    <div class="sec-title">备注：</div>
+    <div style="font-size:12px">旧材料已确认，并由托修方回收□　旧材料已确认，托修方声明放弃□　无旧材料□</div>
+    <div class="sign">
+      <div class="addr">地址：云南省<br>电话：0871-</div>
+      <div>质检员签字：__________</div>
+      <div>客户签字：__________</div>
+    </div>
+  `;
+  doPrint(buildPrintHTML('', rowsHtml));
 }
 
 // 按车牌号打印该车全部修理记录
@@ -648,23 +852,53 @@ function printByPlate(){
   const sumLabor = list.reduce((s,r)=>s+(r.labor||0),0);
   const sumCost = list.reduce((s,r)=>s+r.cost,0);
   const rowsHtml = `
-    <div style="margin-bottom:8px;font-size:14px"><b>车牌号：</b>${esc(list[0].plate)}　<b>记录数：</b>${list.length} 条</div>
+    <style>
+      table{width:100%; border-collapse:collapse; font-size:13px;}
+      th,td{border:1px solid #000; padding:6px 8px; text-align:left;}
+      th{background:#f2f2f2;}
+      .sum td{font-weight:700; background:#f5f5f5;}
+    </style>
+    <div style="text-align:center;font-size:18px;font-weight:700;margin-bottom:10px">车辆维修记录汇总 — ${esc(list[0].plate)}</div>
+    <div style="margin-bottom:8px;font-size:13px"><b>车牌号：</b>${esc(list[0].plate)}　<b>记录数：</b>${list.length} 条</div>
     <table>
       <thead><tr><th>序号</th><th>日期</th><th>修理工</th><th>修理项目</th><th>工时费</th><th>金额</th><th>备注</th></tr></thead>
       <tbody>${rows}
         <tr class="sum"><td colspan="4">合计</td><td class="money">${fmtMoney(sumLabor)}</td><td class="money">${fmtMoney(sumCost)}</td><td></td></tr>
       </tbody>
     </table>`;
-  doPrint(buildPrintHTML(`车辆维修记录汇总 — ${esc(list[0].plate)}`, rowsHtml));
+  document.getElementById('printArea').innerHTML = rowsHtml;
+  window.print();
 }
 
 // ================= 采购统计 =================
+let editingPurchaseId = null;
 function addPurchase(){
   const name = document.getElementById('pName').value.trim();
   const qty = parseFloat(document.getElementById('pQty').value);
   const price = parseFloat(document.getElementById('pPrice').value);
   const sale = parseFloat(document.getElementById('pSale').value)||0;
   if(!name || isNaN(qty) || isNaN(price)){ toast('请填写名称、数量、进价'); return; }
+
+  if(editingPurchaseId){
+    // 编辑模式：归还旧库存，再按新数据入库
+    const old = state.purchases.find(p=>p.id===editingPurchaseId);
+    if(old){ stockOut(old.name, old.qty); } // 归还旧库存
+    Object.assign(old, {
+      name, qty, price, sale,
+      amount: Math.round(qty*price*100)/100,
+      supplier: document.getElementById('pSupplier').value.trim(),
+      date: document.getElementById('pDate').value || today(),
+      buyer: document.getElementById('pBuyer').value.trim(),
+      note: document.getElementById('pNote').value.trim(),
+    });
+    stockIn(name, qty, sale);
+    editingPurchaseId = null;
+    document.getElementById('purchaseSaveBtn').textContent = '💾 保存记录';
+    document.getElementById('purchaseCancelBtn').style.display = 'none';
+    saveData(); clearPurchaseForm(); renderPurchase(); renderInventory(); toast('✅ 采购记录已更新');
+    return;
+  }
+
   state.purchases.push({
     id: uid(), name,
     qty, price, sale,
@@ -677,14 +911,44 @@ function addPurchase(){
   stockIn(name, qty, sale); // 自动入库（含售价）
   saveData(); clearPurchaseForm(); renderPurchase(); renderInventory(); toast('✅ 采购记录已保存，已自动入库');
 }
+function editPurchase(id){
+  const p = state.purchases.find(x=>x.id===id);
+  if(!p) return;
+  editingPurchaseId = id;
+  document.getElementById('pName').value = p.name||'';
+  document.getElementById('pQty').value = p.qty||'';
+  document.getElementById('pPrice').value = p.price||'';
+  document.getElementById('pSale').value = p.sale||'';
+  document.getElementById('pSupplier').value = p.supplier||'';
+  document.getElementById('pDate').value = p.date||today();
+  document.getElementById('pBuyer').value = p.buyer||'';
+  document.getElementById('pNote').value = p.note||'';
+  document.getElementById('purchaseSaveBtn').textContent = '💾 保存修改';
+  document.getElementById('purchaseCancelBtn').style.display = '';
+  switchTab('purchase', document.querySelectorAll('.tab')[1]);
+  document.getElementById('purchaseTab').scrollIntoView({behavior:'smooth'});
+  toast('已载入记录，修改后点“保存修改”');
+}
+function cancelEditPurchase(){
+  editingPurchaseId = null;
+  document.getElementById('purchaseSaveBtn').textContent = '💾 保存记录';
+  document.getElementById('purchaseCancelBtn').style.display = 'none';
+  clearPurchaseForm();
+  toast('已取消编辑');
+}
 function clearPurchaseForm(){
   ['pName','pQty','pPrice','pSale','pSupplier','pBuyer','pNote'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('pDate').value = today();
+  editingPurchaseId = null;
+  document.getElementById('purchaseSaveBtn').textContent = '💾 保存记录';
+  document.getElementById('purchaseCancelBtn').style.display = 'none';
 }
 function renderPurchase(){
+  const nf = document.getElementById('pFilterName').value.trim();
   const sf = document.getElementById('pFilterSupplier').value.trim();
   const df = document.getElementById('pFilterDate').value;
   let list = state.purchases.slice().sort((a,b)=>b.date.localeCompare(a.date) || (a.id>b.id?-1:1));
+  if(nf) list = list.filter(p=>p.name.includes(nf));
   if(sf) list = list.filter(p=>p.supplier.includes(sf));
   if(df) list = list.filter(p=>p.date===df);
 
@@ -714,7 +978,7 @@ function renderPurchase(){
       <td>${esc(p.supplier)}</td>
       <td>${esc(p.buyer)}</td>
       <td>${esc(p.note)}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="delPurchase('${p.id}')">删除</button></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="editPurchase('${p.id}')">✏️ 编辑</button> <button class="btn btn-danger btn-sm" onclick="delPurchase('${p.id}')">删除</button></td>
     </tr>`).join('');
   const sumAmount = list.reduce((s,p)=>s+p.amount,0);
   const sumQty = list.reduce((s,p)=>s+p.qty,0);
@@ -734,6 +998,7 @@ function delPurchase(id){
   saveData(); renderPurchase(); toast('已删除');
 }
 function resetPurchaseFilter(){
+  document.getElementById('pFilterName').value='';
   document.getElementById('pFilterSupplier').value='';
   document.getElementById('pFilterDate').value='';
   renderPurchase();
@@ -811,18 +1076,26 @@ function renderFinance(){
   // 按月份筛选（不选则全部）
   let repairs = state.repairs;
   let purchases = state.purchases;
+  let expenses = state.expenses;
   if(month){
     repairs = repairs.filter(r=>r.date.startsWith(month));
     purchases = purchases.filter(p=>p.date.startsWith(month));
+    expenses = expenses.filter(e=>e.date.startsWith(month));
   }
 
   const income = repairs.reduce((s,r)=>s+(r.cost||0),0);
-  const expense = purchases.reduce((s,p)=>s+(p.amount||0),0);
+  const purchaseExpense = purchases.reduce((s,p)=>s+(p.amount||0),0);
+  const otherExpense = expenses.reduce((s,e)=>s+(e.amount||0),0);
+  const commissionExpense = repairs.reduce((s,r)=>s+((r.labor||0)*(state.commissionRate||0)/100),0);
+  const expense = purchaseExpense + otherExpense + commissionExpense;
   const profit = income - expense;
 
   document.getElementById('financeStats').innerHTML = `
     <div class="stat"><div class="num money" style="color:var(--green)">${fmtMoney(income)}</div><div class="lbl">总收入（修理）</div></div>
-    <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(expense)}</div><div class="lbl">总支出（采购）</div></div>
+    <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(expense)}</div><div class="lbl">总支出</div></div>
+    <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(purchaseExpense)}</div><div class="lbl">其中采购</div></div>
+    <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(commissionExpense)}</div><div class="lbl">其中工时提成</div></div>
+    <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(otherExpense)}</div><div class="lbl">其中日常开支</div></div>
     <div class="stat"><div class="num money" style="color:${profit>=0?'var(--green)':'var(--red)'}">${fmtMoney(profit)}</div><div class="lbl">利润</div></div>
     <div class="stat"><div class="num">${repairs.length}</div><div class="lbl">修理车数</div></div>
   `;
@@ -831,56 +1104,186 @@ function renderFinance(){
   const months = new Map();
   state.repairs.forEach(r=>{
     const m = (r.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, expense:0, repairCount:0});
+    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
     months.get(m).income += r.cost||0;
+    months.get(m).commission += (r.labor||0)*(state.commissionRate||0)/100;
     months.get(m).repairCount++;
   });
   state.purchases.forEach(p=>{
     const m = (p.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, expense:0, repairCount:0});
-    months.get(m).expense += p.amount||0;
+    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
+    months.get(m).purchase += p.amount||0;
+  });
+  state.expenses.forEach(e=>{
+    const m = (e.date||'').slice(0,7) || '未知';
+    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
+    months.get(m).other += e.amount||0;
   });
   const monthList = Array.from(months.entries()).sort((a,b)=>b[0].localeCompare(a[0]));
 
   if(monthList.length===0){
     document.getElementById('financeTableWrap').innerHTML = '<div class="empty">暂无数据</div>';
-    return;
-  }
-  const rows = monthList.map(([m,v])=>{
-    const p = v.income - v.expense;
-    return `<tr>
+  } else {
+    const rows = monthList.map(([m,v])=>{
+      const exp = v.purchase + v.other + v.commission;
+      const p = v.income - exp;
+      return `<tr>
       <td>${esc(m)}</td>
       <td>${v.repairCount}</td>
       <td class="money">${fmtMoney(v.income)}</td>
-      <td class="money">${fmtMoney(v.expense)}</td>
+      <td class="money">${fmtMoney(v.purchase)}</td>
+      <td class="money">${fmtMoney(v.commission)}</td>
+      <td class="money">${fmtMoney(v.other)}</td>
+      <td class="money">${fmtMoney(exp)}</td>
       <td class="money" style="color:${p>=0?'var(--green)':'var(--red)'}">${fmtMoney(p)}</td>
     </tr>`;
-  }).join('');
-  document.getElementById('financeTableWrap').innerHTML = `
+    }).join('');
+    document.getElementById('financeTableWrap').innerHTML = `
     <table>
-      <thead><tr><th>月份</th><th>修理车数</th><th>收入</th><th>支出</th><th>利润</th></tr></thead>
+      <thead><tr><th>月份</th><th>修理车数</th><th>收入</th><th>采购支出</th><th>工时提成</th><th>日常开支</th><th>总支出</th><th>利润</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+  }
+
+  renderExpense();
+  renderWorkerStat();
 }
 function resetFinanceFilter(){
   document.getElementById('fFilterMonth').value='';
   renderFinance();
 }
+
+// 日常开支
+function addExpense(){
+  const item = document.getElementById('eItem').value.trim();
+  const amount = parseFloat(document.getElementById('eAmount').value);
+  const date = document.getElementById('eDate').value;
+  const note = document.getElementById('eNote').value.trim();
+  if(!item){ toast('请填写开支项目'); return; }
+  if(isNaN(amount) || amount<=0){ toast('请填写有效金额'); return; }
+  if(!date){ toast('请填写日期'); return; }
+  state.expenses.push({ id:uid(), item, amount, date, note });
+  saveData();
+  document.getElementById('eItem').value='';
+  document.getElementById('eAmount').value='';
+  document.getElementById('eNote').value='';
+  renderFinance();
+  toast('✅ 已记录开支');
+}
+function delExpense(id){
+  if(!confirm('确定删除这条开支记录吗？')) return;
+  state.expenses = state.expenses.filter(e=>e.id!==id);
+  saveData(); renderFinance(); toast('已删除');
+}
+function renderExpense(){
+  const list = state.expenses.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(list.length===0){
+    document.getElementById('expenseTableWrap').innerHTML = '<div class="empty">暂无开支记录</div>';
+    return;
+  }
+  const rows = list.map(e=>`
+    <tr>
+      <td>${esc(e.date)}</td>
+      <td>${esc(e.item)}</td>
+      <td class="money">${fmtMoney(e.amount)}</td>
+      <td>${esc(e.note)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="delExpense('${e.id}')">删除</button></td>
+    </tr>`).join('');
+  document.getElementById('expenseTableWrap').innerHTML = `
+    <table>
+      <thead><tr><th>日期</th><th>项目</th><th>金额</th><th>备注</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// 按修理工统计
+function renderWorkerStat(){
+  const month = document.getElementById('fFilterMonth').value;
+  let repairs = state.repairs;
+  if(month) repairs = repairs.filter(r=>r.date.startsWith(month));
+
+  const rate = state.commissionRate || 0;
+  const map = new Map();
+  repairs.forEach(r=>{
+    const w = (r.worker||'').trim() || '未填写';
+    if(!map.has(w)) map.set(w, {count:0, income:0, labor:0});
+    const o = map.get(w);
+    o.count++;
+    o.income += r.cost||0;
+    o.labor += r.labor||0;
+  });
+  const list = Array.from(map.entries()).sort((a,b)=>b[1].income-a[1].income);
+
+  if(list.length===0){
+    document.getElementById('workerStatWrap').innerHTML = '<div class="empty">暂无数据</div>';
+    return;
+  }
+  const rows = list.map(([w,o])=>{
+    const comm = o.labor * rate / 100;
+    return `<tr>
+      <td>${esc(w)}</td>
+      <td>${o.count}</td>
+      <td class="money">${fmtMoney(o.labor)}</td>
+      <td class="money" style="color:var(--red)">${fmtMoney(comm)}</td>
+      <td class="money">${fmtMoney(o.income)}</td>
+    </tr>`;
+  }).join('');
+  const totalLabor = list.reduce((s,[,o])=>s+o.labor,0);
+  const totalComm = totalLabor * rate / 100;
+  document.getElementById('workerStatWrap').innerHTML = `
+    <table>
+      <thead><tr><th>修理工</th><th>修理车数</th><th>工时费合计</th><th>提成(${rate}%)</th><th>收入合计</th></tr></thead>
+      <tbody>${rows}
+        <tr class="summary-row"><td>合计</td><td>${list.reduce((s,[,o])=>s+o.count,0)}</td><td class="money">${fmtMoney(totalLabor)}</td><td class="money" style="color:var(--red)">${fmtMoney(totalComm)}</td><td class="money">${fmtMoney(list.reduce((s,[,o])=>s+o.income,0))}</td></tr>
+      </tbody>
+    </table>`;
+}
+function saveCommission(){
+  const v = parseFloat(document.getElementById('commissionRate').value);
+  state.commissionRate = (isNaN(v)||v<0)? 0 : v;
+  saveData();
+  renderFinance();
+  toast('✅ 提成比例已保存为 ' + state.commissionRate + '%');
+}
+function exportWorkerStat(){
+  const month = document.getElementById('fFilterMonth').value;
+  let repairs = state.repairs;
+  if(month) repairs = repairs.filter(r=>r.date.startsWith(month));
+  const rate = state.commissionRate || 0;
+  const map = new Map();
+  repairs.forEach(r=>{
+    const w = (r.worker||'').trim() || '未填写';
+    if(!map.has(w)) map.set(w, {count:0, income:0, labor:0});
+    const o = map.get(w);
+    o.count++; o.income += r.cost||0; o.labor += r.labor||0;
+  });
+  const data = Array.from(map.entries()).sort((a,b)=>b[1].income-a[1].income).map(([w,o])=>({
+    '修理工':w,'修理车数':o.count,'工时费合计(元)':o.labor,'提成(元)':Math.round(o.labor*rate)/100,'收入合计(元)':o.income
+  }));
+  exportSheet(data, '修理工工时提成');
+}
+
 function exportFinance(){
   const months = new Map();
   state.repairs.forEach(r=>{
     const m = (r.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, expense:0, repairCount:0});
+    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
     months.get(m).income += r.cost||0;
+    months.get(m).commission += (r.labor||0)*(state.commissionRate||0)/100;
     months.get(m).repairCount++;
   });
   state.purchases.forEach(p=>{
     const m = (p.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, expense:0, repairCount:0});
-    months.get(m).expense += p.amount||0;
+    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
+    months.get(m).purchase += p.amount||0;
+  });
+  state.expenses.forEach(e=>{
+    const m = (e.date||'').slice(0,7) || '未知';
+    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
+    months.get(m).other += e.amount||0;
   });
   const data = Array.from(months.entries()).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,v])=>({
-    '月份':m,'修理车数':v.repairCount,'收入(元)':v.income,'支出(元)':v.expense,'利润(元)':v.income-v.expense
+    '月份':m,'修理车数':v.repairCount,'收入(元)':v.income,'采购支出(元)':v.purchase,'工时提成(元)':v.commission,'日常开支(元)':v.other,'总支出(元)':v.purchase+v.commission+v.other,'利润(元)':v.income-v.purchase-v.commission-v.other
   }));
   exportSheet(data, '财务汇总');
 }
@@ -914,6 +1317,8 @@ function restore(e){
       const data = JSON.parse(reader.result);
       if(!data.repairs || !data.purchases){ toast('❌ 文件格式不正确'); return; }
       if(!data.inventory) data.inventory = [];
+      if(!data.expenses) data.expenses = [];
+      if(!data.commissionRate && data.commissionRate!==0) data.commissionRate = 50;
       state = data; saveData(); renderRepair(); renderPurchase(); renderInventory(); toast('✅ 数据已恢复');
     }catch(err){ toast('❌ 文件解析失败'); }
   };
@@ -924,6 +1329,8 @@ function restore(e){
 // ================= 初始化 =================
 document.getElementById('rDate').value = today();
 document.getElementById('pDate').value = today();
+document.getElementById('eDate').value = today();
+document.getElementById('commissionRate').value = state.commissionRate || 50;
 // 工时费变化时，重新计算总计
 document.getElementById('rHourPrice').addEventListener('input', recalcTotal);
 renderRepair();
