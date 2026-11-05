@@ -43,10 +43,12 @@
   .btn-danger:hover{background:#fef2f2;}
   .btn-sm{height:30px; padding:0 10px; font-size:12px;}
   .actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
-  table{width:100%; border-collapse:collapse; font-size:13px;}
-  th,td{padding:10px 8px; text-align:left; border-bottom:1px solid var(--border);}
-  th{background:#f8fafc; color:var(--muted); font-weight:600; white-space:nowrap;}
-  tr:hover td{background:#fafbfd;}
+  table{width:100%; min-width:900px; max-width:1180px; margin:0 auto; border-collapse:separate; border-spacing:0; font-size:12.5px; background:#fff; border:1px solid var(--border); overflow:hidden;}
+  th,td{padding:5px 10px; text-align:left; border-bottom:1px solid #eef1f5; white-space:normal; word-break:break-word; overflow-wrap:anywhere; line-height:1.6; vertical-align:middle;}
+  th{background:#f7f9fc; color:#5a6672; font-weight:600; font-size:12px; letter-spacing:.3px; border-bottom:1px solid #e3e8ef;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:nth-child(even) td{background:#fcfdfe;}
+  tr:hover td{background:#f3f8ff;}
   .money{color:var(--red); font-weight:600;}
   .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center;}
   .toolbar input{width:160px;}
@@ -56,19 +58,37 @@
   .badge-amber{background:#fef3e2; color:var(--amber);}
   .toast{position:fixed; top:20px; right:20px; background:#2b3440; color:#fff; padding:12px 20px; border-radius:8px; opacity:0; transform:translateY(-10px); transition:.3s; z-index:999; font-size:13px;}
   .toast.show{opacity:1; transform:translateY(0);}
+.inv-modal{position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:1000;}
+.inv-modal.show{display:flex;}
+.inv-modal-box{background:#fff; border-radius:10px; width:90%; max-width:520px; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,.25); overflow:hidden;}
+.inv-modal-head{display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:#2f6fed; color:#fff; font-weight:700; font-size:15px;}
+.inv-modal-close{background:transparent; border:none; color:#fff; font-size:16px; cursor:pointer; line-height:1;}
+.inv-modal-body{padding:12px 18px 18px; overflow-y:auto;}
+.inv-modal-body table{width:100%; border-collapse:collapse; font-size:13px;}
+.inv-modal-body th,.inv-modal-body td{border:1px solid #dfe4ea; padding:7px 10px; text-align:left;}
+.inv-modal-body th{background:#f2f6fc; font-weight:700;}
+.inv-modal-body .empty{text-align:center; color:#999; padding:20px;}
   .summary-row{background:#f0f7ff !important;}
   .summary-row td{font-weight:700;}
   @media(max-width:600px){.form-grid{grid-template-columns:1fr 1fr;} header{padding:16px;}}
   .btn-print{background:#fff; color:var(--amber); border:1px solid var(--amber);}
   .btn-print:hover{background:#fff7ed;}
-  /* 打印区域（屏幕隐藏） */
+  .sub-tabs{display:flex; gap:8px; margin-bottom:16px; border-bottom:2px solid #eef0f4; padding-bottom:10px;}
+  .sub-tab{padding:8px 18px; border-radius:8px 8px 0 0; cursor:pointer; font-size:14px; font-weight:600; color:#666; background:#f5f7fa; border:1px solid transparent; border-bottom:none; transition:.2s;}
+  .sub-tab:hover{color:#2f6fed; background:#eef4ff;}
+  .sub-tab.active{color:#2f6fed; background:#fff; border-color:#2f6fed; border-bottom:2px solid #fff; margin-bottom:-2px;}
+  /* 打印区域(屏幕隐藏) */
   #printArea{display:none;}
   @media print{
     body{background:#fff;}
     body > *:not(#printArea){display:none !important;}
     #printArea{display:block !important; position:static; width:100%; padding:0;}
     #printArea *{visibility:visible;}
-    @page{margin:12mm;}
+    /* 保险:打印时隐藏所有按钮、输入框、下拉框 */
+    #printArea button, #printArea input, #printArea select, #printArea textarea{display:none !important;}
+    /* 打印时表格不能有最小宽度限制,否则会超出纸张 */
+    #printArea table{min-width:0 !important; max-width:100% !important;}
+    @page{size:A4; margin:8mm;}
   }
   /* 配件智能联想下拉 */
   .part-autocomplete{position:relative; flex:1;}
@@ -90,9 +110,12 @@
       <div class="sub">修理信息统计 · 采购货物统计 · 数据本地保存 · 支持导出Excel</div>
     </div>
     <div class="actions">
-      <button class="btn" style="background:rgba(255,255,255,.2);color:#fff" onclick="backup()">💾 备份数据</button>
+      <button class="btn" style="background:rgba(255,255,255,.2);color:#fff" onclick="pickBackupFolder()">📁 备份数据</button>
       <button class="btn" style="background:rgba(255,255,255,.2);color:#fff" onclick="document.getElementById('restoreFile').click()">📂 恢复数据</button>
+      <button class="btn" style="background:rgba(255,255,255,.2);color:#fff" onclick="showSnapshots()">🕘 自动备份</button>
+      <button class="btn" style="background:rgba(255,255,255,.2);color:#fff" onclick="openSyncModal()">📱 数据同步</button>
       <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="restore(event)">
+      <input type="file" id="syncFile" accept=".json" style="display:none" onchange="syncImport(event)">
     </div>
   </header>
 
@@ -107,39 +130,55 @@
 
   <!-- ============ 修理统计 ============ -->
   <div id="repairTab">
+    <div class="sub-tabs">
+      <div class="sub-tab active" onclick="switchRepairSub('record',this)">📝 新增记录</div>
+      <div class="sub-tab" onclick="switchRepairSub('settle',this)">🧾 结算单</div>
+      <div class="sub-tab" onclick="switchRepairSub('settrec',this)">📋 结算记录</div>
+      <div class="sub-tab" onclick="switchRepairSub('stats',this)">📊 Excel导出</div>
+    </div>
+
+    <!-- 子面板:新增记录 -->
+    <div id="repair-sub-record">
     <div class="cards" id="repairStats"></div>
     <div class="panel">
       <h2>➕ 新增修理记录</h2>
       <div style="margin-bottom:16px;padding:12px;background:#fff8e6;border:1px dashed #e0a800;border-radius:8px">
-        <label style="font-size:12px;color:#8a6d00;font-weight:600">📋 粘贴修理消息自动识别（粘贴后点“识别”，自动填入下方表单）</label>
-        <textarea id="rPaste" rows="6" style="width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box" placeholder="把修理消息粘贴到这里，例如：&#10;云G09079D&#10;焊后半夜&#10;焊接货箱拉链&#10;U行扣3个&#10;工时100&#10;谭稳2026.9.23"></textarea>
+        <label style="font-size:12px;color:#8a6d00;font-weight:600">📋 粘贴修理消息自动识别(粘贴后点"识别",自动填入下方表单)</label>
+        <textarea id="rPaste" rows="6" style="width:100%;margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box" placeholder="把修理消息粘贴到这里,例如:&#10;云G09079D&#10;焊后半夜&#10;焊接货箱拉链&#10;U行扣3个&#10;工时100&#10;谭稳2026.9.23"></textarea>
         <div style="margin-top:8px;display:flex;gap:8px">
           <button type="button" class="btn btn-primary btn-sm" onclick="parseRepair()">✨ 识别并填入</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('rPaste').value=''">清空</button>
         </div>
       </div>
       <div class="form-grid">
-        <div class="field"><label>修理工姓名 *</label><input id="rWorker" placeholder="如：张三"></div>
-        <div class="field"><label>车牌号 *</label><input id="rPlate" placeholder="如：鲁A12345"></div>
-        <div class="field"><label>客户名称</label><input id="rCustomer" placeholder="选填"></div>
-        <div class="field"><label>修理项目 *</label><input id="rItem" placeholder="如：更换刹车片"></div>
+        <div class="field"><label>修理工姓名</label><input id="rWorker" placeholder="如:张三(选填)"></div>
+        <div class="field"><label>车牌号 *</label><input id="rPlate" list="rPlateList" placeholder="如:鲁A12345"><datalist id="rPlateList"></datalist></div>
+        <div class="field"><label>客户名称</label><input id="rCustomer" list="rCustomerList" placeholder="选填"><datalist id="rCustomerList"></datalist></div>
+        <div class="field" style="grid-column:1 / -1"><label>修理项目</label>
+          <div id="rItemRows" style="display:flex;flex-direction:column;gap:6px"></div>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="addItemRow()">➕ 添加项目</button>
+          <datalist id="rItemList"></datalist>
+        </div>
       </div>
       <div style="margin-top:16px">
-        <label style="font-size:12px;color:var(--muted);font-weight:600">所用配件（选配件会自动扣减库存、自动算售价）</label>
+        <label style="font-size:12px;color:var(--muted);font-weight:600">所用配件(选配件会自动扣减库存、自动算售价)</label>
         <div id="repairPartsList" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"></div>
         <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addPartRow()">➕ 添加配件</button>
       </div>
       <div class="form-grid" style="margin-top:16px">
-        <div class="field"><label>工时费(元)</label><input id="rHourPrice" type="number" step="0.01" min="0" placeholder="0"></div>
+        <div class="field"><label>工时费(元)</label><input id="rHourPrice" type="number" step="any" min="0" data-decimal placeholder="0"></div>
         <div class="field"><label>提成类型</label><select id="rCommType"><option value="维修">维修</option><option value="电焊">电焊</option></select></div>
+        <div class="field"><label>收款状态</label><select id="rPaid" onchange="togglePayFields()"><option value="未收">未收</option><option value="已收">已收</option></select></div>
+        <div class="field" id="rPayMethodField" style="display:none"><label>收款方式</label><select id="rPayMethod"><option value="现金">现金</option><option value="微信">微信</option><option value="支付宝">支付宝</option><option value="对公转账">对公转账</option><option value="其他">其他</option></select></div>
+        <div class="field" id="rPaidDateField" style="display:none"><label>收款日期</label><input id="rPaidDate" type="date"></div>
         <div class="field"><label>修理日期</label><input id="rDate" type="date"></div>
-        <div class="field"><label>开单人</label><input id="rOpener" placeholder="如：李四（选填）"></div>
+        <div class="field"><label>开单人</label><input id="rOpener" placeholder="如:李四(选填)"></div>
         <div class="field"><label>备注</label><input id="rNote" placeholder="选填"></div>
       </div>
       <div style="margin-top:16px;padding:14px 16px;background:#f0f7ff;border-radius:8px;display:flex;align-items:center;gap:12px;font-size:15px">
-        <span style="font-weight:700">共计：</span>
+        <span style="font-weight:700">共计:</span>
         <span id="rTotal" style="font-size:22px;font-weight:700;color:var(--red)">¥0.00</span>
-        <span style="color:var(--muted);font-size:12px">（工时费 + 配件售价自动合计）</span>
+        <span style="color:var(--muted);font-size:12px">(工时费 + 配件售价自动合计)</span>
       </div>
       <div class="actions" style="margin-top:16px">
         <button class="btn btn-primary" id="repairSaveBtn" onclick="addRepair()">保存记录</button>
@@ -156,11 +195,89 @@
         <input id="rFilterDate" type="date" onchange="renderRepair()">
         <button class="btn btn-ghost btn-sm" onclick="resetRepairFilter()">重置筛选</button>
         <span style="flex:1"></span>
-        <button class="btn btn-print" onclick="printByPlate()">🖨 按车牌打印</button>
-        <button class="btn btn-print btn-sm" onclick="printTab('repair')">🖨 打印预览</button>
-        <button class="btn btn-green" onclick="exportRepair()">⬇ 导出Excel</button>
+        <button class="btn btn-danger btn-sm" onclick="batchDelete('repair')">🗑 批量删除</button>
       </div>
-      <div style="overflow-x:auto" id="repairTableWrap"></div>
+      <div style="overflow:auto; max-height:60vh" id="repairTableWrap"></div>
+    </div>
+    </div><!-- /repair-sub-record -->
+
+    <!-- 子面板:结算单 -->
+    <div id="repair-sub-settle" style="display:none">
+      <div class="panel">
+        <h2>🧾 维修结算单</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 16px">输入车牌号查询,确认后再打印结算单。</p>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="font-size:13px;font-weight:600;color:#444">车牌筛选:</label>
+          <input id="settlePlate" placeholder="输入车牌号,留空则查询全部" style="flex:1;max-width:220px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px" onkeydown="if(event.key==='Enter')querySettle()">
+          <label style="font-size:13px;font-weight:600;color:#444">日期:</label>
+          <input id="settleDateFrom" type="date" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+          <span style="color:#999">至</span>
+          <input id="settleDateTo" type="date" style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+          <button class="btn btn-primary" onclick="querySettle()">🔍 查询</button>
+        </div>
+        <div id="settleResult" style="margin-top:12px"></div>
+        <div style="margin-top:16px;padding:12px;background:#f0f7ff;border-radius:8px;font-size:13px;color:#555;line-height:1.8">
+          <b>说明:</b><br>
+          · 输入车牌号查询,或留空点「查询」查看全部修理记录。<br>
+          · 确认无误后点「打印」输出结算单。
+        </div>
+      </div>
+    </div>
+
+    <!-- 子面板:结算记录 -->
+    <div id="repair-sub-settrec" style="display:none">
+      <div class="panel">
+        <h2>📋 结算记录</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 16px">每次「结清并打印」后自动保存的结算单数据,可查看、可删除。</p>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="font-size:13px;font-weight:600;color:#444">车牌筛选:</label>
+          <input id="settRecPlate" placeholder="输入车牌号,留空则查询全部" style="flex:1;max-width:320px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px" onkeydown="if(event.key==='Enter')renderSettleRecords()">
+          <button class="btn btn-primary" onclick="renderSettleRecords()">🔍 查询</button>
+        </div>
+        <div id="settRecResult" style="margin-top:12px"></div>
+        <div style="margin-top:16px;padding:12px;background:#f0f7ff;border-radius:8px;font-size:13px;color:#555;line-height:1.8">
+          <b>说明:</b><br>
+          · 在「结算单」里点「✅ 结清并打印」后,本次结算数据会自动保存在这里。<br>
+          · 点「查看」可展开明细,点「打印」可重新打印该结算单,点「删除」可移除该条结算记录(不影响修理记录)。
+        </div>
+      </div>
+    </div>
+
+    <!-- 子面板:Excel导出 -->
+    <div id="repair-sub-stats" style="display:none">
+      <div class="panel">
+        <h2>📊 Excel导出</h2>
+        <p style="color:var(--muted);font-size:14px;margin:0 0 16px">选择要导出的表格类型,导出为 Excel 文件。</p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+          <!-- 表一 -->
+          <div style="border:1px solid #e3e8ef;border-radius:10px;padding:16px;background:#fff">
+            <div style="font-weight:700;font-size:15px;margin-bottom:6px">📄 表一 · 维修主表</div>
+            <div style="font-size:12px;color:#888;line-height:1.7;margin-bottom:12px">
+              一行 = 一次维修<br>
+              维修单号 / 日期 / 车牌号 / 维修项目 / 工时费 / 合计金额 / 开单人 / 备注
+            </div>
+            <button class="btn btn-green" style="width:100%" onclick="exportRepairMain()">⬇ 导出维修主表</button>
+          </div>
+
+          <!-- 表二 -->
+          <div style="border:1px solid #e3e8ef;border-radius:10px;padding:16px;background:#fff">
+            <div style="font-weight:700;font-size:15px;margin-bottom:6px">🔩 表二 · 配件明细表</div>
+            <div style="font-size:12px;color:#888;line-height:1.7;margin-bottom:12px">
+              一行 = 一个配件<br>
+              维修单号 / 配件名称 / 数量 / 单价 / 金额 / 是否借用 / 备注
+            </div>
+            <button class="btn btn-green" style="width:100%" onclick="exportRepairParts()">⬇ 导出配件明细使用表</button>
+          </div>
+        </div>
+
+        <div style="margin-top:18px;padding:12px;background:#f0f7ff;border-radius:8px;font-size:13px;color:#555;line-height:1.8">
+          <b>说明:</b><br>
+          · <b>表一</b>用于查看每次维修的总体情况(项目、工时费、合计金额)。<br>
+          · <b>表二</b>用于查看配件明细,一个配件占一行,便于统计单品用量与金额。<br>
+          · 两表通过「维修单号」关联,可在 Excel 中用公式自动汇总。
+        </div>
+      </div>
     </div>
   </div>
 
@@ -170,15 +287,15 @@
     <div class="panel">
       <h2>➕ 新增采购记录</h2>
       <div class="form-grid">
-        <div class="field"><label>配件/材料名称 *</label><input id="pName" placeholder="如：机油"></div>
-        <div class="field"><label>配件编号</label><input id="pCode" placeholder="如：A001（选填）"></div>
+        <div class="field"><label>配件/材料名称 *</label><input id="pName" placeholder="如:机油"></div>
+        <div class="field"><label>配件编号</label><input id="pCode" placeholder="如:A001(选填)"></div>
         <div class="field"><label>来源类型</label><select id="pType"><option value="采购">采购</option><option value="借件">借件</option></select></div>
-        <div class="field"><label>数量 *</label><input id="pQty" type="number" min="0" step="0.01" placeholder="0"></div>
-        <div class="field"><label>进价(元) *</label><input id="pPrice" type="number" min="0" step="0.01" placeholder="0"></div>
-        <div class="field"><label>售价(元)</label><input id="pSale" type="number" min="0" step="0.01" placeholder="0"></div>
-        <div class="field"><label>供应商</label><input id="pSupplier" placeholder="如：XX配件城"></div>
+        <div class="field"><label>数量 *</label><input id="pQty" type="number" min="0" step="0.01" data-decimal placeholder="0"></div>
+        <div class="field"><label>进价(元) *</label><input id="pPrice" type="number" min="0" step="0.01" data-decimal placeholder="0"></div>
+        <div class="field"><label>售价(元)</label><input id="pSale" type="number" min="0" step="0.01" data-decimal placeholder="选填,可后续补充"></div>
+        <div class="field"><label>供应商</label><input id="pSupplier" placeholder="如:XX配件城"></div>
         <div class="field"><label>采购日期</label><input id="pDate" type="date"></div>
-        <div class="field"><label>经办人</label><input id="pBuyer" placeholder="如：李四"></div>
+        <div class="field"><label>经办人</label><input id="pBuyer" placeholder="如:李四"></div>
         <div class="field"><label>备注</label><input id="pNote" placeholder="选填"></div>
       </div>
       <div class="actions" style="margin-top:16px">
@@ -191,14 +308,16 @@
       <h2>📋 采购记录明细</h2>
       <div class="toolbar">
         <input id="pFilterName" placeholder="按名称搜索" oninput="renderPurchase()">
+        <input id="pFilterCode" placeholder="按编号搜索" oninput="renderPurchase()">
         <input id="pFilterSupplier" placeholder="按供应商筛选" oninput="renderPurchase()">
         <input id="pFilterDate" type="date" onchange="renderPurchase()">
         <button class="btn btn-ghost btn-sm" onclick="resetPurchaseFilter()">重置筛选</button>
         <span style="flex:1"></span>
+        <button class="btn btn-danger btn-sm" onclick="batchDelete('purchase')">🗑 批量删除</button>
         <button class="btn btn-print btn-sm" onclick="printTab('purchase')">🖨 打印预览</button>
         <button class="btn btn-green" onclick="exportPurchase()">⬇ 导出Excel</button>
       </div>
-      <div style="overflow-x:auto" id="purchaseTableWrap"></div>
+      <div style="overflow:auto; max-height:60vh" id="purchaseTableWrap"></div>
     </div>
   </div>
 
@@ -207,20 +326,20 @@
   <div id="saleTab" style="display:none">
     <div class="cards" id="saleStats"></div>
     <div class="panel">
-      <h2>🛒 新增配件出库（销售）</h2>
+      <h2>🛒 新增配件出库(销售)</h2>
       <div class="form-grid">
-        <div class="field"><label>客户 / 收货单位 *</label><input id="sCustomer" placeholder="如：公司车辆 / 张三"></div>
+        <div class="field"><label>客户 / 收货单位 *</label><input id="sCustomer" placeholder="如:公司车辆 / 张三"></div>
         <div class="field"><label>出库日期</label><input id="sDate" type="date"></div>
-        <div class="field"><label>经手人</label><input id="sHandler" placeholder="如：李四"></div>
+        <div class="field"><label>经手人</label><input id="sHandler" placeholder="如:李四"></div>
         <div class="field"><label>备注</label><input id="sNote" placeholder="选填"></div>
       </div>
       <div style="margin-top:14px">
-        <label style="font-size:12px;color:var(--muted);font-weight:600">出库配件（选配件自动扣库存、自动带出售价）</label>
+        <label style="font-size:12px;color:var(--muted);font-weight:600">出库配件(选配件自动扣库存、自动带出售价)</label>
         <div id="salePartsList" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"></div>
         <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addSaleRow()">➕ 添加配件</button>
       </div>
       <div style="margin-top:14px;font-size:15px;font-weight:700">
-        出库总额：<span id="sTotal" style="color:var(--red)">¥0.00</span>
+        出库总额:<span id="sTotal" style="color:var(--red)">¥0.00</span>
       </div>
       <div class="actions" style="margin-top:16px">
         <button class="btn btn-primary" id="saleSaveBtn" onclick="addSale()">保存出库单</button>
@@ -240,15 +359,24 @@
         <input id="sFilterCustomer" placeholder="按客户筛选" oninput="renderSale()">
         <input id="sFilterDate" type="date" onchange="renderSale()">
         <button class="btn btn-ghost btn-sm" onclick="resetSaleFilter()">重置筛选</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-danger btn-sm" onclick="batchDelete('sale')">🗑 批量删除</button>
       </div>
-      <div style="overflow-x:auto" id="saleTableWrap"></div>
+      <div style="overflow:auto; max-height:60vh" id="saleTableWrap"></div>
     </div>
   </div>
 
   <div id="inventoryTab" style="display:none">
+    <div class="sub-tabs">
+      <div class="sub-tab active" onclick="switchInventorySub('view',this)">📊 库存预览</div>
+      <div class="sub-tab" onclick="switchInventorySub('del',this)">🗑 删除配件</div>
+    </div>
+
+    <!-- 子面板:库存一览 -->
+    <div id="inventory-sub-view">
     <div class="cards" id="inventoryStats"></div>
     <div class="panel">
-      <h2>📊 库存一览
+      <h2>📊 库存预览
         <div class="actions">
           <button class="btn btn-print btn-sm" onclick="printTab('inventory')">🖨 打印预览</button>
           <button class="btn btn-ghost btn-sm" onclick="exportInventory()">⬇ 导出Excel</button>
@@ -256,13 +384,31 @@
       </h2>
       <div class="toolbar">
         <input id="invFilter" placeholder="按配件名称筛选" oninput="renderInventory()">
+        <input id="invFilterCode" placeholder="按编号搜索" oninput="renderInventory()">
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="invOnlyLow" style="width:auto;height:auto" onchange="renderInventory()"> 只看库存不足</label>
         <span style="flex:1"></span>
         <button class="btn btn-ghost btn-sm" onclick="manualStock()">➕ 手动调整库存</button>
         <button class="btn btn-ghost btn-sm" onclick="recalcInventory()">🔄 重算库存</button>
       </div>
-      <div style="overflow-x:auto" id="inventoryTableWrap"></div>
+      <div style="overflow-x:auto; overflow-y:auto; max-height:60vh" id="inventoryTableWrap"></div>
     </div>
+    </div><!-- /inventory-sub-view -->
+
+    <!-- 子面板:删除配件 -->
+    <div id="inventory-sub-del" style="display:none">
+      <div class="panel">
+        <h2>🗑 删除配件</h2>
+        <p style="color:var(--muted);font-size:13px;margin:0 0 12px">删除配件会同时删除该配件的所有采购记录，并把库存中的该配件整体移除（历史修理/出库单据保留原样）。</p>
+        <div class="toolbar">
+          <input id="delPartFilterName" placeholder="按名称筛选" oninput="renderDelPart()">
+          <input id="delPartFilterCode" placeholder="按编号筛选" oninput="renderDelPart()">
+          <span style="flex:1"></span>
+          <button class="btn btn-danger btn-sm" onclick="batchDelPart()">🗑 批量删除</button>
+          <button class="btn btn-danger btn-sm" onclick="cleanZeroStock()">🧹 清理零库存配件</button>
+        </div>
+        <div style="overflow:auto; max-height:60vh" id="delPartTableWrap"></div>
+      </div>
+    </div><!-- /inventory-sub-del -->
   </div>
 
   <!-- ============ 车辆管理 ============ -->
@@ -271,8 +417,9 @@
     <div class="panel">
       <h2>🚗 新增公司车辆</h2>
       <div class="form-grid">
-        <div class="field"><label>车牌号 *</label><input id="vPlate" placeholder="如：鲁A12345"></div>
-        <div class="field"><label>司机 / 负责人</label><input id="vDriver" placeholder="如：张三"></div>
+        <div class="field"><label>车牌号 *</label><input id="vPlate" placeholder="如:鲁A12345"></div>
+        <div class="field"><label>公司</label><input id="vCompany" placeholder="选填,如:XX运输公司"></div>
+        <div class="field"><label>司机 / 负责人</label><input id="vDriver" placeholder="如:张三"></div>
         <div class="field"><label>备注</label><input id="vNote" placeholder="选填"></div>
       </div>
       <div class="actions" style="margin-top:16px">
@@ -284,8 +431,9 @@
     <div class="panel">
       <h2>🚗 批量添加车辆</h2>
       <div class="form-grid">
-        <div class="field" style="grid-column:1/-1"><label>车牌号 + 司机（每行一个，逗号/顿号隔开）</label><textarea id="vBatch" rows="5" placeholder="如：&#10;云G01138D，张三&#10;云G02590D，李四&#10;云G03580D（仅车牌号也可）"></textarea></div>
-        <div class="field"><label>统一司机 / 负责人（选填）</label><input id="vBatchDriver" placeholder="所有车辆同一司机可填"></div>
+        <div class="field" style="grid-column:1/-1"><label>车牌号 + 司机(每行一个,逗号/顿号隔开)</label><textarea id="vBatch" rows="5" placeholder="如:&#10;云G01138D,张三&#10;云G02590D,李四&#10;云G03580D(仅车牌号也可)"></textarea></div>
+        <div class="field"><label>统一公司(选填)</label><input id="vBatchCompany" placeholder="所有车辆同一公司可填"></div>
+        <div class="field"><label>统一司机 / 负责人(选填)</label><input id="vBatchDriver" placeholder="所有车辆同一司机可填"></div>
       </div>
       <div class="actions" style="margin-top:16px">
         <button class="btn btn-primary" onclick="batchAddVehicle()">批量添加</button>
@@ -302,8 +450,9 @@
       <div class="toolbar">
         <input id="vFilter" placeholder="搜车牌 / 司机" oninput="renderVehicle()">
         <span style="flex:1"></span>
+        <button class="btn btn-danger btn-sm" onclick="batchDelete('vehicle')">🗑 批量删除</button>
       </div>
-      <div style="overflow-x:auto" id="vehicleTableWrap"></div>
+      <div style="overflow:auto; max-height:60vh" id="vehicleTableWrap"></div>
     </div>
   </div>
 
@@ -322,7 +471,7 @@
         <button class="btn btn-ghost btn-sm" onclick="resetFinanceFilter()">重置筛选</button>
         <span style="flex:1"></span>
       </div>
-      <div style="overflow-x:auto" id="financeTableWrap"></div>
+      <div style="overflow:auto; max-height:60vh" id="financeTableWrap"></div>
     </div>
 
     <div class="panel">
@@ -332,43 +481,62 @@
         </div>
       </h2>
       <div class="toolbar" style="margin-bottom:12px">
-        <label style="font-size:13px;display:flex;align-items:center;gap:6px">🔧 维修提成(%)：
-          <input id="repairRate" type="number" step="1" min="0" max="100" value="50" style="width:80px" onchange="saveCommission()">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px">🔧 维修提成(%):
+          <input id="repairRate" type="number" step="0.1" min="0" max="100" value="50" style="width:80px" onchange="saveCommission()">
         </label>
-        <label style="font-size:13px;display:flex;align-items:center;gap:6px">🔥 电焊提成(%)：
-          <input id="weldRate" type="number" step="1" min="0" max="100" value="50" style="width:80px" onchange="saveCommission()">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px">🔥 电焊提成(%):
+          <input id="weldRate" type="number" step="0.1" min="0" max="100" value="50" style="width:80px" onchange="saveCommission()">
         </label>
-        <label style="font-size:13px;display:flex;align-items:center;gap:6px">按修理工筛选：
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px">按修理工筛选:
           <input id="workerFilter" placeholder="输入姓名" style="width:110px" oninput="renderWorkerStat()">
         </label>
-        <span style="color:var(--muted);font-size:12px">提成 = 工时费 × 比例（修理项目/备注含“电焊/焊/焊接”按电焊比例，否则按维修比例）</span>
+        <span style="color:var(--muted);font-size:12px">提成 = 工时费 × 比例(修理项目/备注含"电焊/焊/焊接"按电焊比例,否则按维修比例)</span>
         <span style="flex:1"></span>
       </div>
       <div style="overflow-x:auto" id="workerStatWrap"></div>
     </div>
 
     <div class="panel">
-      <h2>💼 日常开支（工资、水电、房租等）</h2>
+      <h2>💼 日常开支(工资、水电、房租等)</h2>
       <div class="form-grid">
-        <div class="field"><label>开支项目 *</label><input id="eItem" placeholder="如：工资、水电费、房租"></div>
-        <div class="field"><label>金额(元) *</label><input id="eAmount" type="number" step="0.01" min="0" placeholder="0"></div>
+        <div class="field"><label>开支项目 *</label><input id="eItem" placeholder="如:工资、水电费、房租"></div>
+        <div class="field"><label>金额(元) *</label><input id="eAmount" type="number" step="0.01" min="0" data-decimal placeholder="0"></div>
         <div class="field"><label>日期 *</label><input id="eDate" type="date"></div>
         <div class="field"><label>备注</label><input id="eNote" placeholder="选填"></div>
       </div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn btn-primary" onclick="addExpense()">➕ 记一笔开支</button>
       </div>
-      <div style="overflow-x:auto;margin-top:16px" id="expenseTableWrap"></div>
+      <div style="overflow:auto; max-height:60vh; margin-top:16px" id="expenseTableWrap"></div>
+    </div>
+
+    <div class="panel">
+      <h2>📋 操作日志
+        <div class="actions">
+          <button class="btn btn-ghost btn-sm" onclick="clearLogs()">清空日志</button>
+        </div>
+      </h2>
+      <div style="overflow-x:auto;margin-top:12px" id="logWrap"></div>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="inv-modal" id="invModal" onclick="if(event.target===this)closeInvModal()">
+  <div class="inv-modal-box">
+    <div class="inv-modal-head">
+      <span id="invModalTitle">配件明细</span>
+      <button class="inv-modal-close" onclick="closeInvModal()">✕</button>
+    </div>
+    <div class="inv-modal-body" id="invModalBody"></div>
+  </div>
+</div>
 <div id="printArea"></div>
 
 <script>
 // ================= 数据层 =================
 const STORE_KEY = 'truck_repair_shop_data_v1';
+const LOW_STOCK = 3; // 告急阈值:剩余库存小于此值时视为告急配件
 function loadData(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
@@ -378,11 +546,24 @@ function loadData(){
       if(!d.expenses) d.expenses = [];
       if(!d.sales) d.sales = [];
       if(!d.vehicles) d.vehicles = [];
+      if(!d.logs) d.logs = [];
+      if(!d.settlements) d.settlements = [];
+      if(!d.deletedParts) d.deletedParts = [];
       if(!d.commissionRate && d.commissionRate!==0) d.commissionRate = 50;
       if(!d.repairRate && d.repairRate!==0) d.repairRate = (d.commissionRate!=null? d.commissionRate : 50);
       if(!d.weldRate && d.weldRate!==0) d.weldRate = (d.commissionRate!=null? d.commissionRate : 50);
       if(d.purchases) d.purchases.forEach(p=>{ if(!p.type) p.type = '采购'; });
-      // 给旧修理记录补维修单号（zyxlc+年月日+序号）
+      // 给旧库存补进价成本字段(默认0)
+      if(d.inventory) d.inventory.forEach(i=>{ if(i.cost==null) i.cost = 0; });
+      // 给旧出库单配件补进价成本字段(默认0,历史数据未记录进价快照)
+      if(d.sales) d.sales.forEach(s=>{ if(s.parts) s.parts.forEach(p=>{ if(p.cost==null) p.cost = 0; }); });
+      // 给旧采购记录补序号(按现有顺序递增)
+      if(d.purchases && d.purchases.length){
+        let maxSeq = 0;
+        d.purchases.forEach(p=>{ if(p.seq && p.seq>maxSeq) maxSeq = p.seq; });
+        d.purchases.forEach(p=>{ if(!p.seq){ maxSeq++; p.seq = maxSeq; } });
+      }
+      // 给旧修理记录补维修单号(zyxlc+年月日+序号)
       if(d.repairs && d.repairs.length){
         const seqMap = {};
         d.repairs.forEach(r=>{
@@ -404,17 +585,45 @@ function loadData(){
       return d;
     }
   }catch(e){ console.error(e); }
-  return { repairs:[], purchases:[], sales:[], vehicles:[], inventory:[], expenses:[], commissionRate:50, repairRate:50, weldRate:50 };
+  return { repairs:[], purchases:[], sales:[], vehicles:[], inventory:[], expenses:[], logs:[], settlements:[], deletedParts:[], commissionRate:50, repairRate:50, weldRate:50 };
 }
 function saveData(){
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  // 自动备份:保留最近 5 次快照(不含操作日志,避免膨胀)
+  // 节流:30 秒内最多生成一次快照,避免频繁保存时每次都深拷贝整个 state
+  try{
+    const NOW = Date.now();
+    if(!saveData._lastSnapTime || NOW - saveData._lastSnapTime > 30000){
+      saveData._lastSnapTime = NOW;
+      const snap = JSON.parse(JSON.stringify(state));
+      delete snap.logs;
+      delete snap.settlements; // 结算记录明细较大,快照中剔除,避免膨胀
+      const KEY = STORE_KEY + '_snapshots';
+      let snaps = [];
+      try{ snaps = JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ snaps = []; }
+      snaps.push({ time: NOW, label: today() + ' ' + new Date().toTimeString().slice(0,8), data: snap });
+      if(snaps.length > 5) snaps = snaps.slice(snaps.length-5);
+      localStorage.setItem(KEY, JSON.stringify(snaps));
+    }
+  }catch(e){}
+}
+// 操作日志:记录谁在什么时候做了什么(多人共用时追责/回溯)
+function logAction(action, detail){
+  if(!state.logs) state.logs = [];
+  state.logs.push({
+    time: Date.now(),
+    timeStr: new Date().toLocaleString('zh-CN', {hour12:false}),
+    action, detail: detail||''
+  });
+  // 只保留最近 500 条
+  if(state.logs.length > 500) state.logs = state.logs.slice(state.logs.length-500);
 }
 let state = loadData();
 
 function today(){ return new Date().toISOString().slice(0,10); }
-function fmtMoney(n){ return '¥' + Number(n||0).toFixed(2); }
+function fmtMoney(n){ const v = Number(n)||0; const r = Math.round(v*100)/100; return '￥' + (Number.isInteger(r) ? r : r.toFixed(2)); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-// 生成维修单号：zyxlc + 年月日 + 3位序号（同一天递增）
+// 生成维修单号:zyxlc + 年月日 + 3位序号(同一天递增)
 function genRepairNo(dateStr){
   const d = (dateStr||today()).replace(/[^0-9]/g,'').slice(0,8); // YYYYMMDD
   const prefix = 'zyxlc' + d;
@@ -432,27 +641,27 @@ function genRepairNo(dateStr){
 }
 
 // ================= 库存工具 =================
-// 名称归一化：去空格、全角转半角、统一大小写，用于宽松匹配
+// 名称归一化:去空格、全角转半角、统一大小写,用于宽松匹配
 function normName(s){
   return String(s==null?'':s)
     .replace(/\s+/g,'')            // 去掉所有空白
-    .replace(/[＊×✕✖]/g,'*')       // 各种乘号/星号统一为 *
-    .replace(/[（]/g,'(').replace(/[）]/g,')')
-    .replace(/[－—–]/g,'-')
+    .replace(/[*×✕✖]/g,'*')       // 各种乘号/星号统一为 *
+    .replace(/[(]/g,'(').replace(/[)]/g,')')
+    .replace(/[—–-]/g,'-')
     .toLowerCase();
 }
-// 根据配件名称查找库存项（宽松匹配：忽略空格、全角半角、大小写）
+// 根据配件名称查找库存项(宽松匹配:忽略空格、全角半角、大小写)
 function findInv(name){
   if(!name) return undefined;
   const key = normName(name);
-  // 先精确匹配，再归一化匹配
+  // 先精确匹配,再归一化匹配
   return state.inventory.find(i=>i.name===name) || state.inventory.find(i=>normName(i.name)===key);
 }
-// 模糊匹配：返回与输入相近的库存配件（按名称+编号匹配，按相关度排序）
+// 模糊匹配:返回与输入相近的库存配件(按名称+编号匹配,按相关度排序)
 function findSimilarParts(keyword, limit){
   limit = limit || 8;
   if(!keyword || !keyword.trim()){
-    // 空输入时返回全部库存（按名称排序）
+    // 空输入时返回全部库存(按名称排序)
     return state.inventory.slice().sort((a,b)=>normName(a.name).localeCompare(normName(b.name))).slice(0,limit);
   }
   const kw = normName(keyword);
@@ -460,7 +669,7 @@ function findSimilarParts(keyword, limit){
     const nm = normName(inv.name);
     const code = normName(inv.code||'');
     let score = 0;
-    // 编号匹配（编号唯一对应配件，优先级最高）
+    // 编号匹配(编号唯一对应配件,优先级最高)
     if(code && code === kw) score = 2000;
     else if(code && code.startsWith(kw)) score = 1500;
     else if(code && code.includes(kw)) score = 800;
@@ -469,7 +678,7 @@ function findSimilarParts(keyword, limit){
     else if(nm.startsWith(kw)) score = Math.max(score, 500);
     else if(nm.includes(kw)) score = Math.max(score, 300);
     else if(score===0){
-      // 字符级相似度：计算公共子序列长度
+      // 字符级相似度:计算公共子序列长度
       const lcs = lcsLen(nm, kw);
       const ratio = lcs / Math.max(nm.length, kw.length);
       if(ratio >= 0.5) score = Math.round(ratio * 100);
@@ -478,7 +687,7 @@ function findSimilarParts(keyword, limit){
   }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
   return scored.slice(0,limit).map(x=>x.inv);
 }
-// 最长公共子序列长度（用于模糊匹配）
+// 最长公共子序列长度(用于模糊匹配)
 function lcsLen(a, b){
   const m=a.length, n=b.length;
   const dp = new Array(m+1).fill(0).map(()=>new Array(n+1).fill(0));
@@ -490,26 +699,34 @@ function lcsLen(a, b){
   }
   return dp[m][n];
 }
-// 入库：增加库存（采购时调用），可带售价和编号
-function stockIn(name, qty, sale, code){
+// 入库:增加库存(采购时调用),可带售价、编号、进价成本
+function stockIn(name, qty, sale, code, cost){
   if(!name || !qty) return;
   let inv = findInv(name);
   if(inv){
     inv.qty = Math.round((inv.qty + qty)*100)/100;
     if(sale && sale>0) inv.sale = sale; // 更新售价
     if(code) inv.code = code; // 更新编号
+    if(cost != null && cost >= 0) inv.cost = cost; // 更新进价成本
   }else{
-    state.inventory.push({ name, qty, unit:'', sale: sale||0, code: code||'' });
+    state.inventory.push({ name, qty, unit:'', sale: sale||0, code: code||'', cost: (cost!=null?cost:0) });
   }
 }
-// 出库：减少库存（修理时调用），返回是否成功
+// 出库:减少库存(修理时调用),返回是否成功
 function stockOut(name, qty){
   if(!name || !qty) return true;
   let inv = findInv(name);
   if(!inv){ toast(`⚠️ 库存中没有「${name}」`); return false; }
-  if(inv.qty < qty){ toast(`⚠️ 「${name}」库存不足（现有 ${inv.qty}）`); return false; }
+  if(inv.qty < qty){ toast(`⚠️ 「${name}」库存不足(现有 ${inv.qty})`); return false; }
   inv.qty = Math.round((inv.qty - qty)*100)/100;
   return true;
+}
+// 检查告急配件:剩余库存 < LOW_STOCK 时提醒
+function checkLowStock(){
+  const low = state.inventory.filter(i=>i.qty<LOW_STOCK);
+  if(low.length===0) return;
+  const names = low.map(i=>`${i.name}(剩 ${i.qty})`).join('、');
+  toast(`⚠️ 告急配件:${names}`);
 }
 
 // ================= 工具 =================
@@ -518,9 +735,25 @@ function toast(msg){
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._timer);
-  t._timer = setTimeout(()=>t.classList.remove('show'), 2000);
+  t._timer = setTimeout(()=>t.classList.remove('show'), msg.length>30?5000:2000);
 }
-function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// 全局:数字输入框禁止负数;带 data-decimal 的允许小数
+ document.addEventListener('input', function(e){
+  const el = e.target;
+  if(el && el.tagName==='INPUT' && el.type==='number'){
+    if(el.value.includes('-')){
+      const v = el.value.replace(/[^0-9.]/g,'');
+      if(el.value !== v) el.value = v;
+    }
+    if(el.hasAttribute('data-decimal')) return; // 允许小数
+    if(el.value.includes('.')){
+      const v = el.value.replace(/[^0-9]/g,'');
+      if(el.value !== v) el.value = v;
+    }
+  }
+}, true);
 
 function switchTab(tab, el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -537,19 +770,38 @@ function switchTab(tab, el){
   if(tab==='finance') renderFinance();
 }
 
+// 修理统计子页签切换
+function switchRepairSub(sub, el){
+  document.querySelectorAll('#repairTab .sub-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('repair-sub-record').style.display = sub==='record'?'block':'none';
+  document.getElementById('repair-sub-settle').style.display = sub==='settle'?'block':'none';
+  document.getElementById('repair-sub-settrec').style.display = sub==='settrec'?'block':'none';
+  document.getElementById('repair-sub-stats').style.display = sub==='stats'?'block':'none';
+  if(sub==='settrec') renderSettleRecords();
+}
+// 库存查看子标签切换
+function switchInventorySub(sub, el){
+  document.querySelectorAll('#inventoryTab .sub-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('inventory-sub-view').style.display = sub==='view'?'block':'none';
+  document.getElementById('inventory-sub-del').style.display = sub==='del'?'block':'none';
+  if(sub==='del') renderDelPart();
+}
+
 // ================= 修理统计 =================
 let partRowSeq = 0;
 let editingRepairId = null;
 let commTypeTouched = false; // 用户是否手动改过提成类型
 
-// 中文数字转阿拉伯数字（如“三”→“3”），返回 null 表示不是中文数字
+// 中文数字转阿拉伯数字(如"三"→"3"),返回 null 表示不是中文数字
 function cnNum(s){
   const map = {'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10};
   s = s.trim();
   if(/^[0-9]+(\.[0-9]+)?$/.test(s)) return parseFloat(s);
   if(s.length===1 && map[s]) return map[s];
   if(s==='十') return 10;
-  // 处理“十五”“二十三”这类
+  // 处理"十五""二十三"这类
   if(s.includes('十')){
     const parts = s.split('十');
     const a = parts[0]===''?1:(map[parts[0]]||0);
@@ -560,18 +812,18 @@ function cnNum(s){
   return null;
 }
 
-// 粘贴修理消息，自动识别字段
+// 粘贴修理消息,自动识别字段
 function parseRepair(){
   const raw = document.getElementById('rPaste').value;
   if(!raw.trim()){ toast('请先粘贴修理消息'); return; }
   let lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  if(lines.length<2){ toast('内容太短，无法识别'); return; }
+  if(lines.length<2){ toast('内容太短,无法识别'); return; }
 
   // 1. 车牌号 = 第一行
   const plate = lines[0];
   document.getElementById('rPlate').value = plate;
 
-  // 2. 日期 + 修理工：在最后一行（或最后两行）中找日期和名字
+  // 2. 日期 + 修理工:在最后一行(或最后两行)中找日期和名字
   let worker = '';
   let date = '';
   const dateRe = /(20\d{2})[.\-/年](\d{1,2})[.\-/月](\d{1,2})?日?/;
@@ -585,16 +837,16 @@ function parseRepair(){
       const mo = String(m[2]).padStart(2,'0');
       const d = m[3]? String(m[3]).padStart(2,'0') : '01';
       date = `${y}-${mo}-${d}`;
-      // 去掉日期部分，剩下的就是修理工名字
+      // 去掉日期部分,剩下的就是修理工名字
       worker = lines[i].replace(dateRe,'').replace(/[.\-/年月日]/g,'').trim();
       break;
     }
   }
-  // 如果最后一行没日期，往前一行找名字
+  // 如果最后一行没日期,往前一行找名字
   if(!worker && dateLineIdx>0){
     worker = lines[dateLineIdx-1].trim();
   }
-  // 如果还没找到名字，用倒数第二行（不含日期行）
+  // 如果还没找到名字,用倒数第二行(不含日期行)
   if(!worker){
     for(let i=lines.length-1;i>=1;i--){
       if(!lines[i].match(dateRe) && !lines[i].startsWith('工时')){
@@ -606,22 +858,22 @@ function parseRepair(){
   if(worker) document.getElementById('rWorker').value = worker;
   if(date) document.getElementById('rDate').value = date;
 
-  // 3. 工时费：找“工时XXX”或“工时费XXX”
+  // 3. 工时费:找"工时XXX"或"工时费XXX"
   let labor = 0;
   lines.forEach(l=>{
-    const m = l.match(/工时[费价]?\s*[:：]?\s*(\d+(?:\.\d+)?)/);
+    const m = l.match(/工时[费价]?\s*[::]?\s*(\d+(?:\.\d+)?)/);
     if(m) labor = parseFloat(m[1]);
   });
   if(labor) document.getElementById('rHourPrice').value = labor;
 
-  // 4. 材料行：以“材料”开头，或含数字（阿拉伯/中文）且不是车牌/工时/日期/名字的行
+  // 4. 材料行:以"材料"开头,或含数字(阿拉伯/中文)且不是车牌/工时/日期/名字的行
   const partLines = [];
   lines.forEach((l,idx)=>{
     if(idx===0) return; // 跳过车牌
     if(l.startsWith('工时')) return;
     if(l.match(dateRe)) return;
     if(l===worker || l===date) return;
-    // 以“材料”开头的行一定是材料行；否则含数字才算
+    // 以"材料"开头的行一定是材料行;否则含数字才算
     if(l.startsWith('材料') || /\d/.test(l) || /[一二两三四五六七八九十]/.test(l)){
       partLines.push(l);
     }
@@ -637,17 +889,17 @@ function parseRepair(){
     if(partLines.includes(l)) break;
     itemLines.push(l);
   }
-  if(itemLines.length) document.getElementById('rItem').value = itemLines.join('、');
+  if(itemLines.length) setItemRows(itemLines.join('、'));
 
   // 6. 填充配件行
   document.getElementById('repairPartsList').innerHTML = '';
   partRowSeq = 0;
   partLines.forEach(l=>{
-    // 识别“材料：”开头 → 借件
-    const isBorrow = /^材料[：:]/.test(l);
-    // 去掉开头的“材料”提示词（如“材料扣叶两个”→“扣叶两个”）
-    let body = l.replace(/^材料[：:]?\s*/, '');
-    // 提取数量：中文数字或阿拉伯数字，后面可能跟“个/件/套/桶/只/条”等
+    // 识别"材料:"开头 → 借件
+    const isBorrow = /^材料[::]/.test(l);
+    // 去掉开头的"材料"提示词(如"材料扣叶两个"→"扣叶两个")
+    let body = l.replace(/^材料[::]?\s*/, '');
+    // 提取数量:中文数字或阿拉伯数字,后面可能跟"个/件/套/桶/只/条"等
     const mNum = body.match(/([0-9]+(?:\.[0-9]+)?|[一二两三四五六七八九十]+)\s*[个件套桶只条支根张把副对片块米斤公斤升盒包卷盘台把]?\s*$/);
     let name = body;
     let qty = 1;
@@ -662,7 +914,47 @@ function parseRepair(){
   });
 
   recalcTotal();
-  toast('✅ 已识别并填入表单，请核对后保存');
+  toast('✅ 已识别并填入表单,请核对后保存');
+}
+
+// ===== 修理项目多行管理 =====
+// 添加一行修理项目输入
+function addItemRow(val){
+  const wrap = document.getElementById('rItemRows');
+  if(!wrap) return;
+  const div = document.createElement('div');
+  div.className = 'item-row';
+  div.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  div.innerHTML = `<input class="item-input" list="rItemList" placeholder="如:更换刹车片" value="${esc(val||'')}" style="flex:1;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;background:#fff" autocomplete="off">
+    <button type="button" class="btn btn-danger btn-sm" style="height:38px" onclick="this.parentElement.remove()">✕</button>`;
+  const input = div.querySelector('.item-input');
+  input.addEventListener('input', function(){
+    if(typeof commTypeTouched!=='undefined' && !commTypeTouched){
+      const el = document.getElementById('rCommType');
+      if(el) el.value = autoDetectCommType();
+    }
+  });
+  wrap.appendChild(div);
+  return div;
+}
+// 收集所有项目(去空、去重、用「、」连接)
+function collectItems(){
+  const inputs = document.querySelectorAll('#rItemRows .item-input');
+  const arr = [];
+  inputs.forEach(inp=>{
+    const v = inp.value.trim();
+    if(v) arr.push(v);
+  });
+  return arr.join('、');
+}
+// 把字符串拆成多行回填(支持「、」「,」「，」「;」「；」分隔)
+function setItemRows(str){
+  const wrap = document.getElementById('rItemRows');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  const arr = String(str||'').split(/[、,，;；]+/).map(s=>s.trim()).filter(Boolean);
+  if(arr.length===0){ addItemRow(); return; }
+  arr.forEach(v=>addItemRow(v));
 }
 
 // 添加一行配件选择
@@ -676,21 +968,47 @@ function addPartRow(partName, partQty, partType, partPrice){
   div.style.cssText = 'display:flex;gap:8px;align-items:flex-start;';
   div.innerHTML = `
     <div class="part-autocomplete">
-      <input class="part-name" placeholder="输入配件名（自动联想）" value="${esc(partName||'')}" autocomplete="off">
+      <input class="part-name" placeholder="输入配件名(自动联想)" value="${esc(partName||'')}" autocomplete="off">
       <div class="part-suggest"></div>
     </div>
-    <input type="number" class="part-qty" min="0" step="0.01" placeholder="数量" value="${partQty||''}" style="width:90px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">
-    ${isBorrow?`<input type="number" class="part-price" min="0" step="0.01" placeholder="金额(元)" value="${partPrice||''}" style="width:110px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">`:''}
+    <select class="part-source" style="width:100px;height:38px;padding:0 8px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;background:#fff">
+      <option value="采购" ${!isBorrow?'selected':''}>库存扣</option>
+      <option value="借件" ${isBorrow?'selected':''}>外借</option>
+    </select>
+    <input type="number" class="part-qty" min="0" step="any" data-decimal placeholder="数量" value="${partQty||''}" style="width:90px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">
+    <input type="number" class="part-price" min="0" step="any" data-decimal placeholder="单价(元)" value="${partPrice!=null&&partPrice!==''?partPrice:''}" style="width:110px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">
     <span class="part-sale" style="min-width:160px;color:var(--red);font-weight:600;font-size:13px;white-space:nowrap;padding-top:10px"></span>
-    ${isBorrow?'<span class="badge badge-amber" style="align-self:center">借件</span>':''}
+    ${isBorrow?'<span class="badge badge-amber" style="align-self:center">外借</span>':''}
     <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove();recalcTotal()">✕</button>
   `;
   const nameEl = div.querySelector('.part-name');
   const qtyEl = div.querySelector('.part-qty');
   const priceEl = div.querySelector('.part-price');
+  const sourceEl = div.querySelector('.part-source');
   const suggestEl = div.querySelector('.part-suggest');
 
-  // 输入时：显示联想下拉 + 更新金额
+  // 切换来源:更新类型、显示/隐藏金额框、重算
+  sourceEl.addEventListener('change', function(){
+    const type = sourceEl.value;
+    div.dataset.type = type;
+    const borrow = type==='借件';
+    // 更新徽章
+    const oldBadge = div.querySelector('.badge');
+    if(oldBadge) oldBadge.remove();
+    if(borrow){
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-amber';
+      badge.style.alignSelf = 'center';
+      badge.textContent = '外借';
+      sourceEl.after(badge);
+    }
+    // 切换类型:外借时清空单价(不自动带库存售价)
+    const pEl2 = div.querySelector('.part-price');
+    if(borrow && pEl2) pEl2.value = '';
+    showPartSale(div);
+  });
+
+  // 输入时:显示联想下拉 + 更新金额
   nameEl.addEventListener('input', function(){
     showPartSale(div);
     renderSuggest(div);
@@ -700,7 +1018,7 @@ function addPartRow(partName, partQty, partType, partPrice){
   qtyEl.addEventListener('input', function(){ showPartSale(div); });
   if(priceEl) priceEl.addEventListener('input', function(){ showPartSale(div); });
 
-  // 键盘导航：配件名回车→数量，数量回车→工时费
+  // 键盘导航:配件名回车→数量,数量回车→工时费
   nameEl.addEventListener('keydown', function(e){
     if(e.key==='Enter'){ e.preventDefault(); qtyEl.focus(); hideSuggest(div); }
     else if(e.key==='ArrowDown'){ e.preventDefault(); moveSuggest(div, 1); }
@@ -732,7 +1050,7 @@ function renderSuggest(div){
   const kw = nameEl.value.trim();
   const list = findSimilarParts(kw, 8);
   if(list.length===0){
-    suggestEl.innerHTML = kw ? '<div class="part-suggest-empty">无相近配件（可直接输入新配件名）</div>' : '<div class="part-suggest-empty">暂无库存配件</div>';
+    suggestEl.innerHTML = kw ? '<div class="part-suggest-empty">无相近配件(可直接输入新配件名)</div>' : '<div class="part-suggest-empty">暂无库存配件</div>';
     suggestEl.classList.add('show');
     return;
   }
@@ -771,26 +1089,27 @@ function moveSuggest(div, dir){
   div.querySelector('.part-name').value = items[next].dataset.name;
   if(div.classList.contains('sale-row')) showSaleRow(div); else showPartSale(div);
 }
-// 显示该配件行的售价信息，并联动总计
+// 显示该配件行的单价/合计信息,并联动总计
 function showPartSale(div){
   const name = div.querySelector('.part-name').value.trim();
   const qty = parseFloat(div.querySelector('.part-qty').value)||0;
+  const priceEl = div.querySelector('.part-price');
   const inv = findInv(name);
   const saleEl = div.querySelector('.part-sale');
   const isBorrow = div.dataset.type==='借件';
-  if(isBorrow){
-    const price = parseFloat(div.querySelector('.part-price').value)||0;
-    saleEl.textContent = price>0 ? `借件金额 ¥${price.toFixed(2)}` : '借件（请填金额）';
-    recalcTotal();
-    return;
+  // 库存扣:单价为空时自动带出库存售价
+  if(!isBorrow && inv && inv.sale>0 && priceEl && !priceEl.value){
+    priceEl.value = inv.sale;
   }
-  if(inv && inv.sale>0){
-    const subtotal = inv.sale * qty;
-    saleEl.textContent = qty>0 ? `¥${inv.sale} × ${qty} = ¥${subtotal.toFixed(2)}` : `售价 ¥${inv.sale}`;
-  }else if(inv){
-    saleEl.textContent = '⚠ 无售价';
+  const unitPrice = priceEl ? (parseFloat(priceEl.value)||0) : 0;
+  if(unitPrice>0 && qty>0){
+    saleEl.textContent = `¥${unitPrice} × ${qty} = ¥${Math.round(unitPrice*qty*100)/100}`;
+  }else if(unitPrice>0){
+    saleEl.textContent = `单价 ¥${unitPrice}`;
+  }else if(name){
+    saleEl.textContent = '⚠ 请填单价';
   }else{
-    saleEl.textContent = name ? '⚠ 库存无此配件' : '';
+    saleEl.textContent = '';
   }
   recalcTotal();
 }
@@ -802,14 +1121,9 @@ function recalcTotal(){
   rows.forEach(row=>{
     const name = row.querySelector('.part-name').value.trim();
     const qty = parseFloat(row.querySelector('.part-qty').value)||0;
-    const isBorrow = row.dataset.type==='借件';
-    if(isBorrow){
-      const price = parseFloat(row.querySelector('.part-price').value)||0;
-      if(name && price>0) partsTotal += price;
-      return;
-    }
-    const inv = findInv(name);
-    if(inv && inv.sale>0 && qty>0) partsTotal += inv.sale * qty;
+    const priceEl = row.querySelector('.part-price');
+    const unitPrice = priceEl ? (parseFloat(priceEl.value)||0) : 0;
+    if(name && qty>0 && unitPrice>0) partsTotal += unitPrice * qty;
   });
   // 工时费
   const labor = parseFloat(document.getElementById('rHourPrice').value)||0;
@@ -826,10 +1140,9 @@ function collectParts(){
     const qty = parseFloat(row.querySelector('.part-qty').value);
     const isBorrow = row.dataset.type==='借件';
     if(name && qty>0){
-      const part = { name, qty, type: row.dataset.type || '采购' };
-      if(isBorrow){
-        part.price = parseFloat(row.querySelector('.part-price').value)||0;
-      }
+      const priceEl = row.querySelector('.part-price');
+      const unitPrice = priceEl ? (parseFloat(priceEl.value)||0) : 0;
+      const part = { name, qty, type: row.dataset.type || '采购', price: unitPrice };
       parts.push(part);
     }
   });
@@ -839,26 +1152,28 @@ function collectParts(){
 function addRepair(){
   const worker = document.getElementById('rWorker').value.trim();
   const plate = document.getElementById('rPlate').value.trim();
-  const item = document.getElementById('rItem').value.trim();
-  if(!worker || !plate || !item){ toast('请填写修理工、车牌号、修理项目'); return; }
+  const item = collectItems();
+  if(!plate){ toast('请填写车牌号'); return; }
   const parts = collectParts();
 
   if(editingRepairId){
-    // 编辑模式：先归还旧记录库存，再按新记录扣库存
+    // 编辑模式:先校验新库存,通过后再归还旧库存、扣新库存(避免校验失败时旧库存已被归还)
     const old = state.repairs.find(r=>r.id===editingRepairId);
-    if(old && old.parts){ old.parts.forEach(p=>{ if(p.type!=='借件') stockIn(p.name, p.qty); }); }
-    // 校验新配件库存（借件不校验）
+    // 校验新配件库存(借件不校验)
     for(const p of parts){
       if(p.type==='借件') continue;
       const inv = findInv(p.name);
-      if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足，无法保存`); return; }
+      if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足,无法保存`); return; }
     }
     // 车辆未登记提醒
     if(!isCompanyVehicle(plate)){
-      if(!confirm(`⚠️ 车牌「${plate}」不是公司车辆。\n\n这辆车不在公司车辆台账中。\n\n点「确定」仍可保存，点「取消」则返回。`)){
+      if(!confirm(`⚠️ 车牌「${plate}」不是公司车辆。\n\n这辆车不在公司车辆台账中。\n\n点「确定」仍可保存,点「取消」则返回。`)){
         return;
       }
     }
+    // 校验通过:归还旧库存
+    if(old && old.parts){ old.parts.forEach(p=>{ if(p.type!=='借件') stockIn(p.name, p.qty); }); }
+    // 扣新库存
     for(const p of parts){ if(p.type!=='借件') stockOut(p.name, p.qty); }
     const labor = parseFloat(document.getElementById('rHourPrice').value)||0;
     const total = recalcTotal();
@@ -869,27 +1184,38 @@ function addRepair(){
       date: document.getElementById('rDate').value || today(),
       note: document.getElementById('rNote').value.trim(),
       commType: document.getElementById('rCommType').value,
+      paid: document.getElementById('rPaid').value,
+      payMethod: document.getElementById('rPayMethod').value,
+      paidDate: document.getElementById('rPaidDate').value,
     });
     editingRepairId = null;
     document.getElementById('repairSaveBtn').textContent = '💾 保存记录';
-    saveData(); clearRepairForm(); renderRepair(); renderInventory(); toast('✅ 修理记录已更新');
+    saveData(); clearRepairForm(); renderRepair(); renderInventory(); logAction('更新修理记录', `${plate} ${item}`);
+    // 告急提醒(轻提示,不弹窗)
+    const lowList = state.inventory.filter(i=>i.qty<LOW_STOCK);
+    if(lowList.length>0){
+      const names = lowList.map(i=>`${i.name}(${i.qty})`).join('、');
+      toast(`✅ 已更新|⚠️ 告急配件:${names}`);
+    } else {
+      toast('✅ 修理记录已更新');
+    }
     return;
   }
 
   // 新增模式
-  // 先校验库存是否充足（借件不校验）
+  // 先校验库存是否充足(借件不校验)
   for(const p of parts){
     if(p.type==='借件') continue;
     const inv = findInv(p.name);
-    if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足，无法保存`); return; }
+    if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足,无法保存`); return; }
   }
-  // 车辆未登记提醒（公司内部车辆）
+  // 车辆未登记提醒(公司内部车辆)
   if(!isCompanyVehicle(plate)){
-    if(!confirm(`⚠️ 车牌「${plate}」不是公司车辆。\n\n这辆车不在公司车辆台账中。\n\n点「确定」仍可保存，点「取消」则返回。`)){
+    if(!confirm(`⚠️ 车牌「${plate}」不是公司车辆。\n\n这辆车不在公司车辆台账中。\n\n点「确定」仍可保存,点「取消」则返回。`)){
       return;
     }
   }
-  // 扣减库存（借件不扣）
+  // 扣减库存(借件不扣)
   for(const p of parts){ if(p.type!=='借件') stockOut(p.name, p.qty); }
   const labor = parseFloat(document.getElementById('rHourPrice').value)||0;
   const total = recalcTotal(); // 总计 = 工时费 + 配件售价
@@ -904,10 +1230,22 @@ function addRepair(){
     date: rDate,
     note: document.getElementById('rNote').value.trim(),
     commType: document.getElementById('rCommType').value,
+    paid: document.getElementById('rPaid').value,
+    payMethod: document.getElementById('rPayMethod').value,
+    paidDate: document.getElementById('rPaidDate').value,
   });
-  saveData(); clearRepairForm(); renderRepair(); renderInventory(); toast('✅ 修理记录已保存，配件已扣减库存');
+  saveData(); clearRepairForm(); renderRepair(); renderInventory(); logAction('新增修理记录', `${plate} ${item}`);
+  fillPlateList(); fillCustomerList();
+  // 告急提醒(轻提示,不弹窗)
+  const lowList = state.inventory.filter(i=>i.qty<LOW_STOCK);
+  if(lowList.length>0){
+    const names = lowList.map(i=>`${i.name}(${i.qty})`).join('、');
+    toast(`✅ 已保存|⚠️ 告急配件:${names}`);
+  } else {
+    toast('✅ 修理记录已保存,配件已扣减库存');
+  }
 }
-// 编辑修理记录：回填表单
+// 编辑修理记录:回填表单
 function editRepair(id){
   const r = state.repairs.find(x=>x.id===id);
   if(!r) return;
@@ -915,13 +1253,17 @@ function editRepair(id){
   document.getElementById('rWorker').value = r.worker||'';
   document.getElementById('rPlate').value = r.plate||'';
   document.getElementById('rCustomer').value = r.customer||'';
-  document.getElementById('rItem').value = r.item||'';
+  setItemRows(r.item||'');
   document.getElementById('rHourPrice').value = r.labor||'';
   document.getElementById('rDate').value = r.date||today();
   document.getElementById('rOpener').value = r.opener||'';
   document.getElementById('rNote').value = r.note||'';
   document.getElementById('rCommType').value = r.commType || autoDetectCommType();
   commTypeTouched = false;
+  document.getElementById('rPaid').value = r.paid || '未收';
+  document.getElementById('rPayMethod').value = r.payMethod || '现金';
+  document.getElementById('rPaidDate').value = r.paidDate || '';
+  togglePayFields();
   // 回填配件行
   document.getElementById('repairPartsList').innerHTML = '';
   partRowSeq = 0;
@@ -933,7 +1275,7 @@ function editRepair(id){
   document.getElementById('repairCancelBtn').style.display = '';
   switchTab('repair', document.querySelector('.tab'));
   document.getElementById('repairTab').scrollIntoView({behavior:'smooth'});
-  toast('已载入记录，修改后点“保存修改”');
+  toast('已载入记录,修改后点"保存修改"');
 }
 function cancelEditRepair(){
   editingRepairId = null;
@@ -943,9 +1285,14 @@ function cancelEditRepair(){
   toast('已取消编辑');
 }
 function clearRepairForm(){
-  ['rWorker','rPlate','rCustomer','rItem','rHourPrice','rOpener','rNote'].forEach(id=>document.getElementById(id).value='');
+  ['rWorker','rPlate','rCustomer','rHourPrice','rOpener','rNote'].forEach(id=>document.getElementById(id).value='');
+  setItemRows('');
   document.getElementById('rCommType').value = '维修';
   commTypeTouched = false;
+  document.getElementById('rPaid').value = '未收';
+  document.getElementById('rPayMethod').value = '现金';
+  document.getElementById('rPaidDate').value = '';
+  togglePayFields();
   document.getElementById('rDate').value = today();
   document.getElementById('repairPartsList').innerHTML = '';
   document.getElementById('rTotal').textContent = fmtMoney(0);
@@ -954,16 +1301,25 @@ function clearRepairForm(){
   document.getElementById('repairSaveBtn').textContent = '💾 保存记录';
   document.getElementById('repairCancelBtn').style.display = 'none';
 }
-function renderRepair(){
+// 获取当前筛选后的修理记录(供列表渲染与打印共用)
+function getFilteredRepairs(){
   const kw = document.getElementById('rFilterKw').value.trim();
   const wf = document.getElementById('rFilterWorker').value.trim();
   const pf = document.getElementById('rFilterPlate').value.trim();
   const df = document.getElementById('rFilterDate').value;
   let list = state.repairs.slice().sort((a,b)=>b.date.localeCompare(a.date) || (a.id>b.id?-1:1));
   if(kw) list = list.filter(r=>[r.worker,r.plate,r.item,r.note].join(' ').includes(kw));
-  if(wf) list = list.filter(r=>r.worker.includes(wf));
-  if(pf) list = list.filter(r=>r.plate.includes(pf));
+  if(wf) list = list.filter(r=>(r.worker||'').includes(wf));
+  if(pf) list = list.filter(r=>(r.plate||'').includes(pf));
   if(df) list = list.filter(r=>r.date===df);
+  return list;
+}
+function renderRepair(){
+  const list = getFilteredRepairs();
+  const kw = document.getElementById('rFilterKw').value.trim();
+  const wf = document.getElementById('rFilterWorker').value.trim();
+  const pf = document.getElementById('rFilterPlate').value.trim();
+  const df = document.getElementById('rFilterDate').value;
 
   // 统计卡片
   const todayList = state.repairs.filter(r=>r.date===today());
@@ -982,36 +1338,71 @@ function renderRepair(){
     return;
   }
   let rows = list.map(r=>{
-    const partsStr = (r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}${p.type==='借件'?'(借)':''}×${p.qty}`).join('、') : '';
+    const partsStr = (r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}${p.type==='借件'?'(外借)':''}×${p.qty}`).join('、') : '';
     const noteStr = [r.note, partsStr].filter(Boolean).join(' | ');
+    const paid = r.paid==='已收';
     return `
     <tr>
+      <td><input type="checkbox" class="batch-check" data-id="${r.id}"></td>
       <td>${esc(r.no||'')}</td>
       <td>${esc(r.date)}</td>
       <td>${esc(r.worker)}</td>
-      <td>${esc(r.plate)}</td>
+      <td><a href="javascript:void(0)" style="color:var(--blue);text-decoration:underline;cursor:pointer" onclick="showPlateHistory('${esc(r.plate)}')">${esc(r.plate)}</a></td>
       <td>${esc(r.item)}</td>
       <td class="money">${fmtMoney(r.labor||0)}</td>
       <td class="money">${fmtMoney(r.cost)}</td>
+      <td><span class="badge ${paid?'badge-green':'badge-amber'}" style="cursor:pointer" onclick="togglePaid('${r.id}')">${paid?'已收':'未收'}</span></td>
       <td>${esc(noteStr)}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="editRepair('${r.id}')">✏️ 编辑</button>
-        <button class="btn btn-print btn-sm" onclick="printOne('${r.id}')">🖨 打印</button>
         <button class="btn btn-danger btn-sm" onclick="delRepair('${r.id}')">删除</button>
       </td>
     </tr>`;
   }).join('');
   const sumCost = list.reduce((s,r)=>s+r.cost,0);
   const sumLabor = list.reduce((s,r)=>s+(r.labor||0),0);
+  const unpaidCount = list.filter(r=>r.paid!=='已收').length;
+  const unpaidAmount = list.filter(r=>r.paid!=='已收').reduce((s,r)=>s+r.cost,0);
   document.getElementById('repairTableWrap').innerHTML = `
-    <table>
+    <table style="table-layout:fixed; min-width:1100px">
+      <colgroup>
+        <col style="width:36px"><col style="width:140px"><col style="width:90px"><col style="width:80px"><col style="width:100px"><col style="width:190px"><col style="width:80px"><col style="width:90px"><col style="width:60px"><col style="width:140px"><col style="width:130px">
+      </colgroup>
       <thead><tr>
-        <th>维修单号</th><th>日期</th><th>修理工</th><th>车牌号</th><th>修理项目</th><th>工时费</th><th>金额</th><th>备注</th><th>操作</th>
+        <th><input type="checkbox" onclick="toggleAll('repair', this)"></th><th>维修单号</th><th>日期</th><th>修理工</th><th>车牌号</th><th>修理项目</th><th>工时费</th><th>金额</th><th>收款</th><th>备注</th><th>操作</th>
       </tr></thead>
       <tbody>${rows}
-        <tr class="summary-row"><td colspan="5">合计（${list.length}条）</td><td class="money">${fmtMoney(sumLabor)}</td><td class="money">${fmtMoney(sumCost)}</td><td colspan="2"></td></tr>
+        <tr class="summary-row"><td></td><td colspan="5">合计(${list.length}条,未收${unpaidCount}条 ¥${unpaidAmount})</td><td class="money">${fmtMoney(sumLabor)}</td><td class="money">${fmtMoney(sumCost)}</td><td colspan="3"></td></tr>
       </tbody>
     </table>`;
+}
+// 快捷切换收款状态
+function togglePaid(id){
+  const r = state.repairs.find(x=>x.id===id);
+  if(!r) return;
+  r.paid = r.paid==='已收' ? '未收' : '已收';
+  logAction(r.paid==='已收'?'标记已收款':'标记未收款', `车牌 ${r.plate},金额 ${r.cost} 元`);
+  saveData(); renderRepair();
+  toast(r.paid==='已收' ? '✅ 已标记收款' : '↩️ 已改为未收');
+}
+// 收款状态切换时显示/隐藏收款方式、收款日期
+function togglePayFields(){
+  const paid = document.getElementById('rPaid').value === '已收';
+  document.getElementById('rPayMethodField').style.display = paid ? '' : 'none';
+  document.getElementById('rPaidDateField').style.display = paid ? '' : 'none';
+}
+// 查看某车牌的历史维修记录
+function showPlateHistory(plate){
+  const list = state.repairs.filter(r=>r.plate===plate).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!list.length){ toast('该车牌暂无维修记录'); return; }
+  const total = list.reduce((s,r)=>s+(r.cost||0),0);
+  const unpaid = list.filter(r=>r.paid!=='已收').reduce((s,r)=>s+(r.cost||0),0);
+  const lines = list.map(r=>{
+    const partsStr = (r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}${p.type==='借件'?'(外借)':''}×${p.qty}`).join('、') : '';
+    const paid = r.paid==='已收'?'已收':'未收';
+    return `${r.date} | ${r.item} | 工时${r.labor||0} | 金额${r.cost} | ${paid}${partsStr?' | '+partsStr:''}`;
+  });
+  alert(`🚗 车牌 ${plate} 维修历史(共 ${list.length} 次,合计 ¥${total},未收 ¥${unpaid})\n\n${lines.join('\n')}`);
 }
 function resetRepairFilter(){
   document.getElementById('rFilterKw').value='';
@@ -1021,21 +1412,84 @@ function resetRepairFilter(){
   renderRepair();
 }
 function delRepair(id){
-  if(!confirm('确定删除这条修理记录吗？删除后所用配件会回补库存。')) return;
+  if(!confirm('确定删除这条修理记录吗?删除后所用配件会回补库存。')) return;
   const r = state.repairs.find(x=>x.id===id);
-  if(r && r.parts){ r.parts.forEach(p=>{ if(p.type!=='借件') stockIn(p.name, p.qty); }); } // 回补库存（借件不回补）
+  if(r && r.parts){ r.parts.forEach(p=>{ if(p.type!=='借件') stockIn(p.name, p.qty); }); } // 回补库存(借件不回补)
   state.repairs = state.repairs.filter(x=>x.id!==id);
-  saveData(); renderRepair(); renderInventory(); toast('已删除（配件已回补库存）');
+  logAction('删除修理记录', `${r?r.plate:''} ${r?r.item:''}`);
+  saveData(); renderRepair(); renderInventory(); toast('已删除(配件已回补库存)');
 }
-function exportRepair(){
-  const data = state.repairs.map(r=>({
-    '维修单号':r.no||'','日期':r.date,'修理工':r.worker,'车牌号':r.plate,
-    '修理项目':r.item,'工时费(元)':r.labor||0,'金额(元)':r.cost,
-    '所用配件':(r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}${p.type==='借件'?'(借)':''}×${p.qty}`).join('、') : '',
-    '开单人':r.opener||'','备注':r.note
+// 全选/取消全选(批量删除用)
+function toggleAll(type, cb){
+  const wrap = document.getElementById({repair:'repairTableWrap',purchase:'purchaseTableWrap',sale:'saleTableWrap',vehicle:'vehicleTableWrap'}[type]);
+  if(!wrap) return;
+  wrap.querySelectorAll('.batch-check').forEach(c=>{ c.checked = cb.checked; });
+}
+// 批量删除
+function batchDelete(type){
+  const wrap = document.getElementById({repair:'repairTableWrap',purchase:'purchaseTableWrap',sale:'saleTableWrap',vehicle:'vehicleTableWrap'}[type]);
+  if(!wrap) return;
+  const checked = Array.from(wrap.querySelectorAll('.batch-check:checked')).map(c=>c.dataset.id);
+  if(checked.length===0){ toast('请先勾选要删除的记录'); return; }
+  const typeName = {repair:'修理记录',purchase:'采购记录',sale:'出库单',vehicle:'车辆'}[type];
+  if(!confirm(`⚠️ 确定批量删除选中的 ${checked.length} 条${typeName}吗?\n\n· 修理:所用配件会回补库存\n· 采购:入库配件会扣回库存\n· 出库:配件会回补库存\n\n此操作不可撤销!`)) return;
+
+  const ids = new Set(checked);
+  if(type==='repair'){
+    state.repairs.forEach(r=>{ if(ids.has(r.id) && r.parts){ r.parts.forEach(p=>{ if(p.type!=='借件') stockIn(p.name, p.qty); }); } });
+    state.repairs = state.repairs.filter(r=>!ids.has(r.id));
+  } else if(type==='purchase'){
+    state.purchases.forEach(p=>{ if(ids.has(p.id)){ const inv = findInv(p.name); if(inv){ inv.qty = Math.round((inv.qty - p.qty)*100)/100; if(inv.qty<0) inv.qty=0; } } });
+    state.purchases = state.purchases.filter(p=>!ids.has(p.id));
+  } else if(type==='sale'){
+    state.sales.forEach(s=>{ if(ids.has(s.id) && s.parts){ s.parts.forEach(p=>stockIn(p.name, p.qty)); } });
+    state.sales = state.sales.filter(s=>!ids.has(s.id));
+  } else if(type==='vehicle'){
+    state.vehicles = state.vehicles.filter(v=>!ids.has(v.id));
+  }
+
+  logAction('批量删除', `${typeName} ${checked.length} 条`);
+  saveData();
+  renderRepair(); renderPurchase(); renderSale(); renderVehicle(); renderInventory();
+  toast(`✅ 已批量删除 ${checked.length} 条${typeName}`);
+}
+// 表一:维修主表(一行 = 一次维修)
+function exportRepairMain(){
+  const data = state.repairs.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.id>b.id?1:-1)).map(r=>({
+    '维修单号': r.no||'',
+    '日期': r.date,
+    '车牌号': r.plate,
+    '维修项目': r.item,
+    '工时费': r.labor||0,
+    '合计金额': r.cost,
+    '开单人': r.opener||'',
+    '备注': r.note
   }));
-  exportSheet(data, '修理统计');
+  exportSheet(data, '维修主表');
 }
+
+// 表二:配件明细表(一行 = 一个配件)
+function exportRepairParts(){
+  const rows = [];
+  state.repairs.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.id>b.id?1:-1)).forEach(r=>{
+    (r.parts||[]).forEach(p=>{
+      rows.push({
+        '维修单号': r.no||'',
+        '配件名称': p.name||'',
+        '数量': Number(p.qty)||0,
+        '单价': Number(p.price)||0,
+        '金额': Math.round((Number(p.price)||0)*(Number(p.qty)||0)*100)/100,
+        '是否借用': p.type==='借件' ? '是' : '否',
+        '备注': p.type==='借件' ? '借出' : ''
+      });
+    });
+  });
+  if(!rows.length){ toast('⚠ 没有配件明细可导出'); return; }
+  exportSheet(rows, '配件明细表');
+}
+
+// 保留旧函数名,兼容旧引用
+function exportRepair(){ exportRepairMain(); }
 
 // ================= 打印功能 =================
 // 金额转中文大写
@@ -1102,8 +1556,6 @@ function buildPrintHTML(title, rowsHtml){
       .sign .addr{line-height:1.8;}
     </style>
     <div class="settle">
-      <h1>智维宝修服务有限公司 维修结算单</h1>
-      <div class="sub">结算单委托书号：</div>
       ${rowsHtml}
     </div>
   `;
@@ -1113,7 +1565,79 @@ function doPrint(html){
   window.print();
 }
 
-// 通用打印预览：打印指定页签的表格内容
+// 打印前清理表格:去掉复选框列、操作列,修正合计行 colspan
+function cleanPrintTable(wrap){
+  if(!wrap) return '';
+  const clone = wrap.cloneNode(true);
+  const table = clone.querySelector('table');
+  if(!table) return wrap.innerHTML;
+  // 1. 去掉表头第一列(复选框全选)和最后一列(操作)
+  const thead = table.querySelector('thead');
+  if(thead){
+    const ths = thead.querySelectorAll('tr th');
+    if(ths.length){
+      if(ths[0] && ths[0].querySelector('input[type=checkbox]')) ths[0].remove();
+      if(ths.length && ths[ths.length-1].textContent.trim()==='操作') ths[ths.length-1].remove();
+    }
+  }
+  // 2. 去掉每一行第一列(复选框)和最后一列(操作按钮)
+  const tbody = table.querySelector('tbody');
+  if(tbody){
+    tbody.querySelectorAll('tr').forEach(tr=>{
+      const tds = tr.querySelectorAll('td');
+      if(!tds.length) return;
+      // 第一列是复选框则删除
+      if(tds[0] && tds[0].querySelector('input[type=checkbox]')) tds[0].remove();
+      // 最后一列包含按钮(编辑/删除/打印)则删除
+      if(tds.length && tr.querySelector('td:last-child button')) tr.querySelector('td:last-child').remove();
+    });
+  }
+  // 3. 去掉链接的可点击属性,保留文本
+  clone.querySelectorAll('a').forEach(a=>{
+    const txt = a.textContent;
+    const span = document.createElement('span');
+    span.textContent = txt;
+    a.replaceWith(span);
+  });
+  // 4. 去掉收款状态标签的点击属性,保留文本
+  clone.querySelectorAll('.badge').forEach(b=>{ b.removeAttribute('onclick'); b.style.cursor='default'; });
+  // 4b. 打印时去掉备注里的"(外借)"字样,只保留材料名(网页界面不受影响)
+  clone.querySelectorAll('td').forEach(td=>{
+    if(td.children.length===0 && td.textContent.includes('(外借)')){
+      td.textContent = td.textContent.replace(/\(外借\)/g, '');
+    }
+  });
+  // 5. 修正合计行:删除第一个空 td(复选框占位)和末尾空 td,并调整第一个文字 td 的 colspan
+  clone.querySelectorAll('.summary-row').forEach(tr=>{
+    const tds = Array.from(tr.querySelectorAll('td'));
+    if(!tds.length) return;
+    // 删除第一个空 td(复选框占位)
+    if(tds[0] && tds[0].textContent.trim()==='' && tds[0].colSpan<=1){
+      const removed = tds.shift();
+      removed.remove();
+    }
+    // 删除末尾的空 td(操作列占位)
+    let last = tr.querySelector('td:last-child');
+    while(last && last.textContent.trim()==='' && last.colSpan>1){
+      const prev = last.previousElementSibling;
+      last.remove();
+      last = prev;
+    }
+    // 末尾单个空 td(colSpan 为 1)也删除
+    last = tr.querySelector('td:last-child');
+    if(last && last.textContent.trim()==='' && last.colSpan<=1){
+      last.remove();
+    }
+    // 第一个文字 td 的 colspan +1(补回删除的第一列)
+    const firstTd = tr.querySelector('td');
+    if(firstTd && firstTd.colSpan>1){
+      firstTd.colSpan = firstTd.colSpan + 1;
+    }
+  });
+  return clone.innerHTML;
+}
+
+// 通用打印预览:打印指定页签的表格内容
 function printTab(tab){
   const cfg = {
     repair: { title:'🔧 修理统计', wrap:'repairTableWrap', stats:'repairStats' },
@@ -1124,8 +1648,18 @@ function printTab(tab){
     finance: { title:'💰 财务汇总', wrap:'financeTableWrap', stats:'financeStats' },
   }[tab];
   if(!cfg) return;
-  const statsHtml = document.getElementById(cfg.stats) ? document.getElementById(cfg.stats).innerHTML : '';
-  const tableHtml = document.getElementById(cfg.wrap) ? document.getElementById(cfg.wrap).innerHTML : '';
+  // 修理统计:与单条打印、按车牌打印统一格式
+  if(tab==='repair'){
+    // 优先打印勾选的记录；未勾选则打印当前筛选结果
+    const checked = Array.from(document.querySelectorAll('#repairTableWrap .batch-check:checked')).map(c=>c.dataset.id);
+    const list = checked.length>0
+      ? state.repairs.filter(r=>checked.includes(r.id)).sort((a,b)=>b.date.localeCompare(a.date) || (a.id>b.id?-1:1))
+      : getFilteredRepairs();
+    if(checked.length>0) toast(`仅打印勾选的 ${checked.length} 条记录`);
+    printRepairList(list, '维修结算单', true);
+    return;
+  }
+  const tableHtml = cleanPrintTable(document.getElementById(cfg.wrap));
   const html = `
     <style>
       *{font-family:"Microsoft YaHei","PingFang SC",sans-serif; box-sizing:border-box;}
@@ -1140,6 +1674,8 @@ function printTab(tab){
       table{width:100%; border-collapse:collapse; font-size:12px;}
       th,td{border:1px solid #000; padding:5px 6px; text-align:left; vertical-align:middle;}
       th{background:#f2f2f2; font-weight:600;}
+      /* 去掉链接下划线和点击样式,纯文本展示 */
+      table a{color:#000; text-decoration:none; cursor:default;}
       .summary-row td{background:#f2f2f2; font-weight:600;}
       .money{text-align:right;}
       .empty{text-align:center; color:#999; padding:20px;}
@@ -1149,24 +1685,202 @@ function printTab(tab){
     </style>
     <div class="print-wrap">
       <h1>${cfg.title}</h1>
-      <div class="print-date">打印时间：${new Date().toLocaleString('zh-CN')}</div>
-      ${statsHtml?`<div class="print-stats">${statsHtml}</div>`:''}
+      <div class="print-date">打印时间:${new Date().toLocaleString('zh-CN')}</div>
       ${tableHtml}
     </div>
   `;
   doPrint(html);
 }
 
-// 打印单条修理记录（维修结算单格式）
+// 打印单条修理记录(表格格式)
 function printOne(id){
   const r = state.repairs.find(x=>x.id===id);
   if(!r) return;
-  const partsStr = (r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}${p.type==='借件'?'(借)':''}×${p.qty}`).join('、') : '';
-  // 材料费 = 配件售价合计；工时费 = r.labor；应收金额 = 材料费+工时费 = r.cost
-  const materialFee = (r.parts&&r.parts.length)? r.parts.reduce((s,p)=>{ if(p.type==='借件'){ return s + (p.price||0); } const inv=findInv(p.name); const sale=inv?inv.sale:0; return s+(sale*p.qty); },0) : 0;
+  printRepairList([r], '维修结算单');
+}
+
+// 按车牌获取驾驶员(从车辆台账带出,无则用开单人)
+function getDriver(r){
+  const v = state.vehicles.find(x=>x.plate===r.plate);
+  return (v&&v.driver) ? v.driver : (r.opener||'');
+}
+// 打印单上的客户名称:驾驶员已取消,客户有值优先用客户;客户为空时用驾驶员兜底
+function customerDisplay(r){
+  const cus = (r.customer||'').trim();
+  if(cus) return cus;
+  return getDriver(r).trim();
+}
+
+// 通用:打印修理记录列表(表头信息 + 维修项目表 + 配件材料表)
+// showPrice 为 true 时,配件表额外增加「单价」列(结算单用)
+function printRepairList(list, title, showPrice){
+  if(!list || list.length===0){ toast('没有可打印的修理记录'); return; }
+
+  // 合计金额(表一模板要引用,必须先计算)
+  const sumCost = list.reduce((s,r)=>s+(r.cost||0),0);
+  const sumLabor = list.reduce((s,r)=>s+(r.labor||0),0);
+  const sumMat = list.reduce((s,r)=>s+((r.parts||[]).reduce((a,p)=>a+((p.price||0)*(p.qty||0)),0)),0);
+
+  // ===== 表一:维修项目(按批次分组:每条记录一个序号,组内项目用顿号连接) =====
+  // 只保留有修理项目的记录
+  const itemRecords = list.filter(r=>String(r.item||'').trim());
+  const hasItem = itemRecords.length > 0;
+  const itemRows = itemRecords.map((r,i)=>{
+    const arr = String(r.item||'').split(/[、,，;；\n]+/).map(s=>s.trim()).filter(Boolean);
+    return `<tr>
+      <td class="idx">${i+1}</td>
+      <td class="item">${arr.map(esc).join('、')}</td>
+      <td class="money labor">${fmtMoney(r.labor||0)}</td>
+    </tr>`;
+  }).join('');
+
+  // ===== 表二:配件材料(按配件名称合并,数量累加) =====
+  const matMap = new Map();
+  list.forEach(r=>{
+    (r.parts||[]).forEach(p=>{
+      const nm = String(p.name||'').trim();
+      const key = nm || ('__'+(p.code||''));
+      if(!matMap.has(key)){
+        matMap.set(key, { code:p.code||'', name:nm, qty:0, unit:p.unit||'', price:p.price, amount:0 });
+      }
+      const it = matMap.get(key);
+      it.qty += Number(p.qty)||0;
+      it.amount += (Number(p.price)||0)*(Number(p.qty)||0);
+      // 保留第一个非空单价
+      if((it.price==null || it.price==='') && p.price!=null && p.price!=='') it.price = p.price;
+      if(!it.code && p.code) it.code = p.code;
+      if(!it.unit && p.unit) it.unit = p.unit;
+    });
+  });
+  const matList = Array.from(matMap.values());
+  const matRows = matList.map((p,idx)=>{
+    const price = (p.price!=null && p.price!=='') ? fmtMoney(p.price) : '';
+    const sub = Math.round((p.amount||0)*100)/100;
+    return `<tr>
+      <td class="idx">${idx+1}</td>
+      <td class="code">${esc(p.code||'')}</td>
+      <td class="material">${esc(p.name||'')}</td>
+      <td class="qty">${esc(p.qty!=null?p.qty:'')}${p.unit?' '+esc(p.unit):''}</td>
+      ${showPrice?`<td class="money price">${price}</td>`:''}
+      <td class="money amount">${fmtMoney(sub)}</td>
+    </tr>`;
+  }).join('');
+  const hasMaterial = matList.length > 0;
+  const priceHead = showPrice ? '<th>单价</th>' : '';
+  const priceColspan = showPrice ? 1 : 0;
+
+  // 表一列宽(序号/项目/工时费)
+  const colgroupItem = `<colgroup>
+    <col style="width:34px"><col><col style="width:90px">
+  </colgroup>`;
+  // 表二列宽(序号/编码/名称/数量/单价/金额)
+  const colgroupMat = `<colgroup>
+    <col style="width:34px"><col style="width:70px"><col><col style="width:62px">${showPrice?'<col style="width:64px">':''}<col style="width:80px">
+  </colgroup>`;
+
+  // 表头信息区:仿批发销售单三行版式(客户名称/日期/单号 → 驾驶员 → 备注 → 车牌号)
+  const isSingle = list.length===1;
+  const r0 = list[0];
+  const headInfo = isSingle
+    ? `<div class="info-grid">
+         <div class="info-line"><span class="lbl">客户名称：</span><span class="val">${esc(customerDisplay(r0))}</span></div>
+         <div class="info-line"><span class="lbl">日　　期：</span><span class="val">${esc(r0.date||'')}</span></div>
+         <div class="info-line"><span class="lbl">结算单号：</span><span class="val">${esc(r0.no||'')}</span></div>
+         <div class="info-line"><span class="lbl">车 牌 号：</span><span class="val">${esc(r0.plate||'')}</span></div>
+         <div class="info-line span2"><span class="lbl">备　　注：</span><span class="val">${esc(r0.note||'')}</span></div>
+       </div>`
+    : `<div class="info-grid">
+         <div class="info-line"><span class="lbl">客户名称：</span><span class="val">${esc(customerDisplay(r0))}</span></div>
+         <div class="info-line"><span class="lbl">日　　期：</span><span class="val">${esc(r0.date||'')} ~ ${esc(list[list.length-1].date||'')}</span></div>
+         <div class="info-line"><span class="lbl">记录数量：</span><span class="val">${list.length} 条</span></div>
+         <div class="info-line"><span class="lbl">车 牌 号：</span><span class="val">${esc(r0.plate||'')}${list.length>1?' 等':''}</span></div>
+         <div class="info-line span2"><span class="lbl">备　　注：</span><span class="val">${esc(r0.note||'')}</span></div>
+       </div>`;
+  const html = `
+    <style>
+      *{font-family:"Microsoft YaHei","PingFang SC",sans-serif; box-sizing:border-box;}
+      body{background:#fff; margin:0;}
+      @page{size:A4; margin:8mm;}
+      .print-wrap{width:100%; max-width:194mm; margin:0 auto; padding:0 1px; color:#000; box-sizing:border-box;}
+      .print-wrap h1{text-align:center; font-size:17px; letter-spacing:2px; margin:0 0 8px; color:#1a1a1a;}
+      /* 表头信息区:仿批发销售单版式 */
+      .info-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:2px 10px; font-size:12px; margin-bottom:8px; padding:0 2px;}
+      .info-line{display:flex; align-items:flex-end; white-space:nowrap; flex-wrap:wrap;}
+      .info-line.full{grid-column:1 / -1; white-space:normal;}
+      .info-line.span2{grid-column:span 2; white-space:normal;}
+      .info-line .lbl{flex:0 0 auto; color:#333;}
+      .info-line .val{flex:1 1 auto; border-bottom:1px solid #000; min-height:16px; padding:0 4px 1px; overflow:hidden; text-overflow:ellipsis; word-break:break-word;}
+      table{width:100%; max-width:100%; min-width:0; border-collapse:collapse; font-size:11px; table-layout:fixed; border:1px solid #000; box-sizing:border-box;}
+      table + table{margin-top:6px;}
+      th,td{border:1px solid #000; padding:3px 4px; text-align:center; vertical-align:middle; word-break:break-all; overflow-wrap:break-word; line-height:1.45;}
+      th:first-child, td:first-child{border-left:1px solid #000 !important;}
+      th{background:#eef2f7; font-weight:700; text-align:center; color:#1a1a1a; padding:3px 4px;}
+      td.item{text-align:left;}
+      td.material{text-align:left;}
+      td.code{text-align:center;}
+      tbody tr:nth-child(even) td{background:#fafbfc;}
+      tbody tr td.idx{font-weight:700;}
+      /* 同一记录多个项目:组内行去底边,形成一个大框 */
+      tbody tr.grp-mid td{border-bottom:none !important;}
+      tbody tr.grp-last td{border-bottom:2px solid #000 !important;}
+      tbody tr.grp-mid:nth-child(even) td, tbody tr.grp-last:nth-child(even) td{background:#fff;}
+      /* 合计行与上方项目组拉开分隔 */
+      tbody tr.summary-row td{border-top:2px solid #000 !important;}
+      .summary-row td{background:#eef2f7 !important; font-weight:700; color:#1a1a1a; text-align:center;}
+      .money{text-align:center; font-variant-numeric:tabular-nums; color:#000 !important;}
+      .print-wrap, .print-wrap *{color:#000 !important;}
+      .print-wrap th{background:#eef2f7 !important;}
+      .sign-area{display:flex; justify-content:flex-end; margin-top:12px; font-size:12px; gap:40px;}
+      .sign-area .sig{white-space:nowrap;}
+      .sign-area .sig .blank{display:inline-block; width:100px; border-bottom:1px solid #333; margin-left:4px;}
+    </style>
+    <div class="print-wrap">
+      <h1>${title}</h1>
+      ${headInfo}
+      ${hasItem ? `<table>
+        ${colgroupItem}
+        <thead><tr>
+          <th>序号</th><th>维修项目</th><th>工时费</th>
+        </tr></thead>
+        <tbody>${itemRows}
+          <tr class="summary-row"><td colspan="2">维修费合计</td><td class="money">${fmtMoney(sumLabor)}</td></tr>
+        </tbody>
+      </table>` : ''}
+      ${hasMaterial ? `<table>
+        ${colgroupMat}
+        <thead><tr>
+          <th>序号</th><th>配件编码</th><th>配件名称</th><th>数量</th>${priceHead}<th>金额</th>
+        </tr></thead>
+        <tbody>${matRows}
+          <tr class="summary-row"><td colspan="${4+priceColspan}">材料费合计</td><td class="money">${fmtMoney(sumMat)}</td></tr>
+        </tbody>
+      </table>` : ''}
+      <table>
+        <colgroup><col><col style="width:90px"></colgroup>
+        <tbody><tr class="summary-row"><td>合计（维修+材料）</td><td class="money">${fmtMoney(sumCost)}</td></tr></tbody>
+      </table>
+      <div class="sign-area">
+        <div class="sig">客户签名：<span class="blank"></span></div>
+      </div>
+    </div>
+  `;
+  doPrint(html);
+}
+
+// 生成单张维修结算单的内部 HTML(可复用)
+function buildSettleSheet(r){
+  const partsStr = (r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}×${p.qty}`).join('、') : '';
+  // 材料明细:每个材料单独一行
+  const partsRows = (r.parts&&r.parts.length)
+    ? r.parts.map(p=>`<tr><td class="lbl">${esc(p.name||'')}</td><td>${esc(p.qty!=null?p.qty:'')}</td><td class="lbl">单价</td><td>${(p.price!=null&&p.price!=='')?fmtMoney(p.price):''}</td><td class="lbl">金额</td><td>${fmtMoney((p.price||0)*(p.qty||0))}</td></tr>`).join('')
+    : '';
+  // 材料费 = 配件售价合计;工时费 = r.labor;应收金额 = 材料费+工时费 = r.cost
+  const materialFee = (r.parts&&r.parts.length)? r.parts.reduce((s,p)=>s + ((p.price||0)*p.qty),0) : 0;
   const laborFee = r.labor||0;
   const total = r.cost||0;
-  const rowsHtml = `
+  return `
+    <h1>智维宝修服务有限公司 维修结算单</h1>
+    <div class="sub">结算单委托书号:</div>
     <table>
       <tr>
         <td class="lbl">维修单号</td><td>${esc(r.no||r.id)}</td>
@@ -1187,8 +1901,9 @@ function printOne(id){
         <td class="lbl"></td><td></td>
       </tr>
     </table>
-    <div class="sec-title">修理项目：${esc(r.item)}${partsStr?'　｜　所用配件：'+esc(partsStr):''}</div>
-    <div class="sec-title">费用结算：</div>
+    <div class="sec-title">修理项目:${esc(r.item)}</div>
+    ${partsRows?`<table style="margin-bottom:6px">${partsRows}</table>`:''}
+    <div class="sec-title">费用结算:</div>
     <table>
       <tr>
         <td class="lbl">材料费合计</td><td>${fmtMoney(materialFee)}</td>
@@ -1209,59 +1924,285 @@ function printOne(id){
         <td class="lbl">大写</td><td colspan="5">${rmbUpper(total)}</td>
       </tr>
     </table>
-    <div class="sec-title">温馨提示：</div>
+    <div class="sec-title">温馨提示:</div>
     <div class="tips">
-      1、保养类质保7天或2000公里；换件类质保一个月；大修类质保一个月。<br>
-      2、机动车维修质保期期限，从维修竣工出厂之日起计算，保证期中行驶里程和日期指标，以先到达为准。<br>
-      3、更换发动机总成或者基础机质保3个月，出厂一个月或者1000公里时（先到其中之一为准）需回本厂更换机油保养，否则视为放弃质保！
+      1、保养类质保7天或2000公里;换件类质保一个月;大修类质保一个月。<br>
+      2、机动车维修质保期期限,从维修竣工出厂之日起计算,保证期中行驶里程和日期指标,以先到达为准。<br>
+      3、更换发动机总成或者基础机质保3个月,出厂一个月或者1000公里时(先到其中之一为准)需回本厂更换机油保养,否则视为放弃质保!
     </div>
-    <div class="sec-title">备注：</div>
-    <div style="font-size:12px">旧材料已确认，并由托修方回收□　旧材料已确认，托修方声明放弃□　无旧材料□</div>
+    <div class="sec-title">备注:</div>
+    <div style="font-size:12px">旧材料已确认,并由托修方回收□ 旧材料已确认,托修方声明放弃□ 无旧材料□</div>
     <div class="sign">
-      <div class="addr">地址：云南省<br>电话：0871-</div>
-      <div>质检员签字：__________</div>
-      <div>客户签字：__________</div>
+      <div class="addr">地址:云南省<br>电话:0871-</div>
+      <div>质检员签字:__________</div>
+      <div>客户签字:__________ 日期:__________</div>
     </div>
   `;
-  doPrint(buildPrintHTML('', rowsHtml));
 }
 
-// 按车牌号打印该车全部修理记录
+// 按车牌号打印该车全部修理记录(表格格式,与打印预览一致)
 function printByPlate(){
-  const plate = prompt('请输入要打印的车牌号：');
+  const plate = prompt('请输入要打印的车牌号:');
   if(plate===null) return;
   const kw = plate.trim();
   if(!kw){ toast('请输入车牌号'); return; }
-  const list = state.repairs.filter(r=>r.plate.includes(kw)).sort((a,b)=>a.date.localeCompare(b.date));
+  const list = state.repairs.filter(r=>(r.plate||'').includes(kw)).sort((a,b)=>b.date.localeCompare(a.date) || (a.id>b.id?-1:1));
   if(list.length===0){ toast('未找到该车牌的修理记录'); return; }
-  const rows = list.map((r,i)=>`
-    <tr>
-      <td>${i+1}</td><td>${esc(r.date)}</td><td>${esc(r.worker)}</td>
-      <td>${esc(r.item)}</td><td class="money">${fmtMoney(r.labor||0)}</td><td class="money">${fmtMoney(r.cost)}</td><td>${esc(r.note)}</td>
-    </tr>`).join('');
+  printRepairList(list, '维修结算单', true);
+}
+
+// 结算单打印:支持车牌筛选
+let _settleList = [];
+function querySettle(){
+  const kw = (document.getElementById('settlePlate').value||'').trim();
+  const dateFrom = (document.getElementById('settleDateFrom').value||'').trim();
+  const dateTo = (document.getElementById('settleDateTo').value||'').trim();
+  let list = state.repairs.slice();
+  if(kw) list = list.filter(r=>(r.plate||'').includes(kw));
+  if(dateFrom) list = list.filter(r=>(r.date||'')>=dateFrom);
+  if(dateTo) list = list.filter(r=>(r.date||'')<=dateTo);
+  list = list.sort((a,b)=>b.date.localeCompare(a.date) || (a.id>b.id?-1:1));
+  _settleList = list;
+  const sumCost = list.reduce((s,r)=>s+(r.cost||0),0);
   const sumLabor = list.reduce((s,r)=>s+(r.labor||0),0);
-  const sumCost = list.reduce((s,r)=>s+r.cost,0);
-  const rowsHtml = `
-    <style>
-      table{width:100%; border-collapse:collapse; font-size:13px;}
-      th,td{border:1px solid #000; padding:6px 8px; text-align:left;}
-      th{background:#f2f2f2;}
-      .sum td{font-weight:700; background:#f5f5f5;}
-    </style>
-    <div style="text-align:center;font-size:18px;font-weight:700;margin-bottom:10px">车辆维修记录汇总 — ${esc(list[0].plate)}</div>
-    <div style="margin-bottom:8px;font-size:13px"><b>车牌号：</b>${esc(list[0].plate)}　<b>记录数：</b>${list.length} 条</div>
-    <table>
-      <thead><tr><th>序号</th><th>日期</th><th>修理工</th><th>修理项目</th><th>工时费</th><th>金额</th><th>备注</th></tr></thead>
-      <tbody>${rows}
-        <tr class="sum"><td colspan="4">合计</td><td class="money">${fmtMoney(sumLabor)}</td><td class="money">${fmtMoney(sumCost)}</td><td></td></tr>
-      </tbody>
-    </table>`;
-  document.getElementById('printArea').innerHTML = rowsHtml;
-  window.print();
+  const unpaidCount = list.filter(r=>r.paid!=='已收').length;
+  const el = document.getElementById('settleResult');
+  if(list.length===0){ el.innerHTML = '<div class="empty">没有符合条件的修理记录</div>'; return; }
+  const rows = list.map(r=>{
+    const partsStr = (r.parts&&r.parts.length)? r.parts.map(p=>`${p.name}×${p.qty}`).join('、') : '';
+    const priceStr = (r.parts&&r.parts.length)? r.parts.map(p=> (p.price!=null && p.price!=='') ? fmtMoney(p.price) : '').join('、') : '';
+    const paid = r.paid==='已收';
+    return `<tr>
+      <td><input type="checkbox" class="settle-check" value="${r.id}"></td>
+      <td>${esc(r.no||'')}</td>
+      <td>${esc(r.date)}</td>
+      <td>${esc(r.plate)}</td>
+      <td>${esc(r.worker||'')}</td>
+      <td>${esc(r.item||'')}</td>
+      <td>${esc(partsStr)}</td>
+      <td class="money">${esc(priceStr)}</td>
+      <td class="money">${fmtMoney(r.labor||0)}</td>
+      <td class="money">${fmtMoney(r.cost)}</td>
+      <td><span class="badge ${paid?'badge-green':'badge-amber'}">${paid?'已收':'未收'}</span></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div style="padding:10px 14px;background:#f0f7ff;border-radius:6px;margin-bottom:10px;font-size:13px;color:#444">
+      共 <b>${list.length}</b> 条记录(未收 ${unpaidCount} 条),金额合计 <b style="color:var(--red)">¥${sumCost}</b>,工时费合计 ¥${sumLabor}
+    </div>
+    <div style="overflow:auto; max-height:60vh"><table style="table-layout:fixed; min-width:1100px">
+      <colgroup>
+        <col style="width:36px"><col style="width:140px"><col style="width:90px"><col style="width:100px"><col style="width:80px"><col style="width:200px"><col style="width:180px"><col style="width:90px"><col style="width:80px"><col style="width:90px"><col style="width:60px">
+      </colgroup>
+      <thead><tr><th><input type="checkbox" id="settleCheckAll" onclick="toggleSettleAll(this)"></th><th>维修单号</th><th>日期</th><th>车牌号码</th><th>修理工</th><th>修理项目</th><th>材料</th><th>单价</th><th>工时费</th><th>金额</th><th>收款</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="btn btn-print" onclick="printSelectedSettle()">🖨 打印选中</button>
+      <button class="btn btn-print" onclick="printSettle()">🖨 打印全部</button>
+      <button class="btn btn-primary" onclick="settleAndPrint()">✅ 结清并打印</button>
+    </div>`;
+}
+// 全选/取消全选
+function toggleSettleAll(cb){
+  document.querySelectorAll('.settle-check').forEach(c=>c.checked = cb.checked);
+}
+// 打印勾选的结算单
+function printSelectedSettle(){
+  const ids = Array.from(document.querySelectorAll('.settle-check:checked')).map(c=>c.value);
+  if(ids.length===0){ toast('请先勾选要打印的记录'); return; }
+  const list = _settleList.filter(r=>ids.includes(r.id));
+  if(list.length===0){ toast('未找到勾选的记录'); return; }
+  printRepairList(list, '维修结算单', true);
+}
+function printSettle(){
+  if(_settleList.length===0){ toast('请先点「查询」'); return; }
+  const kw = (document.getElementById('settlePlate').value||'').trim();
+  printRepairList(_settleList, '维修结算单', true);
+}
+// 结清并打印:把当前查询结果里的未收记录批量标记为已收,再打印
+function settleAndPrint(){
+  if(_settleList.length===0){ toast('请先点「查询」'); return; }
+  const unpaid = _settleList.filter(r=>r.paid!=='已收');
+  if(unpaid.length===0){ toast('当前记录已全部结清'); printSettle(); return; }
+  const sum = unpaid.reduce((s,r)=>s+(r.cost||0),0);
+  // 弹出结账确认框(选择收款方式、收款日期)
+  showSettleModal(unpaid, sum);
+}
+// 结账弹框:选择收款方式与日期
+function showSettleModal(unpaid, sum){
+  // 移除旧弹框
+  const old = document.getElementById('settleModal');
+  if(old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'settleModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1100;';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:10px;width:90%;max-width:420px;box-shadow:0 10px 40px rgba(0,0,0,.25);overflow:hidden">
+      <div style="padding:14px 18px;background:#2f6fed;color:#fff;font-weight:700;font-size:15px">✅ 结清收款</div>
+      <div style="padding:18px">
+        <div style="font-size:14px;color:#333;margin-bottom:12px">
+          将 <b>${unpaid.length}</b> 条未收记录标记为已收,合计 <b style="color:#e53935">￥${sum}</b>
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-size:13px;font-weight:600;color:#444">收款方式</label>
+          <select id="settlePayMethod" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+            <option value="现金">现金</option>
+            <option value="微信">微信</option>
+            <option value="支付宝">支付宝</option>
+            <option value="对公转账">对公转账</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;color:#444">收款日期</label>
+          <input id="settlePayDate" type="date" value="${today()}" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+        </div>
+        <div class="actions" style="justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="document.getElementById('settleModal').remove()">取消</button>
+          <button class="btn btn-primary" onclick="confirmSettle()">确认结清并打印</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+// 确认结清
+function confirmSettle(){
+  const method = document.getElementById('settlePayMethod').value;
+  const date = document.getElementById('settlePayDate').value || today();
+  const unpaid = _settleList.filter(r=>r.paid!=='已收');
+  unpaid.forEach(r=>{ r.paid = '已收'; r.payMethod = method; r.paidDate = date; });
+  const sum = unpaid.reduce((s,r)=>s+(r.cost||0),0);
+  // 保存结算记录快照
+  if(!state.settlements) state.settlements = [];
+  state.settlements.push({
+    id: 'st' + Date.now() + Math.random().toString(36).slice(2,6),
+    settleTime: new Date().toLocaleString('zh-CN', {hour12:false}),
+    payMethod: method,
+    payDate: date,
+    plate: (unpaid[0] && unpaid[0].plate) || '',
+    count: unpaid.length,
+    total: sum,
+    items: unpaid.map(r=>({
+      no: r.no||'', date: r.date||'', plate: r.plate||'', worker: r.worker||'',
+      item: r.item||'', parts: (r.parts||[]).map(p=>({name:p.name, qty:p.qty, price:p.price})),
+      labor: Number(r.labor)||0, cost: Number(r.cost)||0
+    }))
+  });
+  saveData();
+  document.getElementById('settleModal').remove();
+  logAction('结清收款', `${unpaid.length} 条记录,合计 ￥${sum},${method}`);
+  toast(`✅ 已结清 ${unpaid.length} 条,共 ￥${sum}`);
+  // 刷新结算单查询结果
+  querySettle();
+  renderRepair();
+  renderSettleRecords();
+  // 打印
+  printRepairList(_settleList, '维修结算单', true);
+}
+
+// ================= 结算记录 =================
+// 渲染结算记录列表
+function renderSettleRecords(){
+  const kw = ((document.getElementById('settRecPlate')||{}).value||'').trim();
+  let list = (state.settlements||[]).slice();
+  if(kw) list = list.filter(s=>(s.plate||'').includes(kw) || (s.items||[]).some(it=>(it.plate||'').includes(kw)));
+  list.sort((a,b)=>String(b.settleTime).localeCompare(String(a.settleTime)));
+  const el = document.getElementById('settRecResult');
+  if(!el) return;
+  if(list.length===0){ el.innerHTML = '<div class="empty">还没有结算记录</div>'; return; }
+  const sumTotal = list.reduce((s,x)=>s+(Number(x.total)||0),0);
+  const rows = list.map(s=>`
+    <tr>
+      <td>${esc(s.settleTime||'')}</td>
+      <td>${esc(s.plate||'')}</td>
+      <td>${esc(String(s.count||0))}</td>
+      <td class="money">${fmtMoney(s.total)}</td>
+      <td>${esc(s.payMethod||'')}</td>
+      <td>${esc(s.payDate||'')}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="viewSettleRecord('${s.id}')">👁 查看</button>
+        <button class="btn btn-ghost btn-sm" onclick="printSettleRecord('${s.id}')">🖨 打印</button>
+        <button class="btn btn-danger btn-sm" onclick="delSettleRecord('${s.id}')">删除</button>
+      </td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <div style="padding:10px 14px;background:#f0f7ff;border-radius:6px;margin-bottom:10px;font-size:13px;color:#444">
+      共 <b>${list.length}</b> 条结算记录,金额合计 <b style="color:#16a34a">¥${fmtMoney(sumTotal)}</b>
+    </div>
+    <div style="overflow:auto; max-height:60vh"><table style="table-layout:fixed; min-width:900px">
+      <colgroup><col style="width:150px"><col style="width:110px"><col style="width:60px"><col style="width:100px"><col style="width:90px"><col style="width:110px"><col style="width:180px"></colgroup>
+      <thead><tr><th>结算时间</th><th>车牌</th><th>条数</th><th>金额</th><th>收款方式</th><th>收款日期</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div id="settRecDetail" style="margin-top:14px"></div>`;
+}
+// 查看某条结算记录明细
+function viewSettleRecord(id){
+  const s = (state.settlements||[]).find(x=>x.id===id);
+  if(!s) return;
+  const el = document.getElementById('settRecDetail');
+  if(!el) return;
+  const rows = (s.items||[]).map((it,i)=>{
+    const partsStr = (it.parts&&it.parts.length)? it.parts.map(p=>`${p.name}×${p.qty}`).join('、') : '';
+    const priceStr = (it.parts&&it.parts.length)? it.parts.map(p=>(p.price!=null&&p.price!=='')?fmtMoney(p.price):'').join('、') : '';
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${esc(it.no||'')}</td>
+      <td>${esc(it.date||'')}</td>
+      <td>${esc(it.plate||'')}</td>
+      <td>${esc(it.worker||'')}</td>
+      <td>${esc(it.item||'')}</td>
+      <td>${esc(partsStr)}</td>
+      <td class="money">${esc(priceStr)}</td>
+      <td class="money">${fmtMoney(it.labor)}</td>
+      <td class="money">${fmtMoney(it.cost)}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div style="padding:12px 14px;background:#f7f9fc;border:1px solid #e3e8ef;border-radius:8px">
+      <div style="font-size:14px;font-weight:700;color:#333;margin-bottom:10px">
+        📋 结算明细 — ${esc(s.plate||'')} · ${esc(s.settleTime||'')} · ${esc(s.payMethod||'')} · 合计 <span style="color:#e53935">${fmtMoney(s.total)}</span>
+      </div>
+      <div style="overflow:auto; max-height:60vh"><table style="table-layout:fixed; min-width:1100px">
+        <colgroup><col style="width:40px"><col style="width:140px"><col style="width:90px"><col style="width:100px"><col style="width:80px"><col style="width:200px"><col style="width:180px"><col style="width:90px"><col style="width:80px"><col style="width:90px"></colgroup>
+        <thead><tr><th>#</th><th>维修单号</th><th>日期</th><th>车牌</th><th>修理工</th><th>修理项目</th><th>材料</th><th>单价</th><th>工时费</th><th>金额</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+}
+// 重新打印某条结算记录
+function printSettleRecord(id){
+  const s = (state.settlements||[]).find(x=>x.id===id);
+  if(!s) return;
+  const list = (s.items||[]).map(it=>({
+    no: it.no, date: it.date, plate: it.plate, worker: it.worker, item: it.item,
+    parts: it.parts||[], labor: it.labor, cost: it.cost, paid: '已收',
+    customer: '', opener: '', note: ''
+  }));
+  if(list.length===0){ toast('该结算记录没有明细'); return; }
+  printRepairList(list, '维修结算单', true);
+}
+// 删除某条结算记录
+function delSettleRecord(id){
+  const s = (state.settlements||[]).find(x=>x.id===id);
+  if(!s) return;
+  if(!confirm(`确定删除这条结算记录吗?\n车牌:${s.plate||'-'}\n时间:${s.settleTime||'-'}\n金额:${fmtMoney(s.total)}\n\n(只删除结算记录,不影响修理记录)`)) return;
+  state.settlements = (state.settlements||[]).filter(x=>x.id!==id);
+  logAction('删除结算记录', `车牌 ${s.plate||'-'},金额 ${s.total} 元`);
+  saveData();
+  renderSettleRecords();
+  toast('🗑 已删除结算记录');
 }
 
 // ================= 采购统计 =================
 let editingPurchaseId = null;
+// 生成采购序号:当前最大 seq + 1
+function genPurchaseSeq(){
+  let max = 0;
+  state.purchases.forEach(p=>{ if(p.seq && p.seq>max) max = p.seq; });
+  return max + 1;
+}
 function addPurchase(){
   const name = document.getElementById('pName').value.trim();
   const code = document.getElementById('pCode').value.trim();
@@ -1269,12 +2210,20 @@ function addPurchase(){
   const price = parseFloat(document.getElementById('pPrice').value);
   const sale = parseFloat(document.getElementById('pSale').value)||0;
   const type = document.getElementById('pType').value || '采购';
-  if(!name || isNaN(qty) || isNaN(price)){ toast('请填写名称、数量、进价'); return; }
+  if(!name || isNaN(qty) || qty<=0 || isNaN(price) || price<0){ toast('请正确填写名称、数量、进价'); return; }
 
   if(editingPurchaseId){
-    // 编辑模式：归还旧库存，再按新数据入库
+    // 编辑模式:归还旧库存,再按新数据入库
     const old = state.purchases.find(p=>p.id===editingPurchaseId);
-    if(old){ stockOut(old.name, old.qty); } // 归还旧库存
+    if(old){
+      // 归还旧库存前先检查库存是否足够(旧库存可能已被修理/出库消耗)
+      const oldInv = findInv(old.name);
+      if(oldInv && oldInv.qty < old.qty){
+        toast(`⚠️ 无法修改:配件「${old.name}」当前库存 ${oldInv.qty} 已不足以归还原入库的 ${old.qty}(可能已被使用)。建议删除后重新录入。`);
+        return;
+      }
+      stockOut(old.name, old.qty); // 归还旧库存
+    }
     Object.assign(old, {
       name, code, qty, price, sale, type,
       amount: Math.round(qty*price*100)/100,
@@ -1283,16 +2232,16 @@ function addPurchase(){
       buyer: document.getElementById('pBuyer').value.trim(),
       note: document.getElementById('pNote').value.trim(),
     });
-    stockIn(name, qty, sale, code);
+    stockIn(name, qty, sale, code, price);
     editingPurchaseId = null;
     document.getElementById('purchaseSaveBtn').textContent = '💾 保存记录';
     document.getElementById('purchaseCancelBtn').style.display = 'none';
-    saveData(); clearPurchaseForm(); renderPurchase(); renderInventory(); toast('✅ 采购记录已更新');
+    saveData(); clearPurchaseForm(); renderPurchase(); renderInventory(); logAction('更新采购记录', `${name} ×${qty}`); toast('✅ 采购记录已更新');
     return;
   }
 
   state.purchases.push({
-    id: uid(), name, code,
+    id: uid(), seq: genPurchaseSeq(), name, code,
     qty, price, sale, type,
     amount: Math.round(qty*price*100)/100,
     supplier: document.getElementById('pSupplier').value.trim(),
@@ -1300,8 +2249,8 @@ function addPurchase(){
     buyer: document.getElementById('pBuyer').value.trim(),
     note: document.getElementById('pNote').value.trim(),
   });
-  stockIn(name, qty, sale, code); // 自动入库（含售价、编号）
-  saveData(); clearPurchaseForm(); renderPurchase(); renderInventory(); toast('✅ 采购记录已保存，已自动入库');
+  stockIn(name, qty, sale, code, price); // 自动入库(含售价、编号、进价)
+  saveData(); clearPurchaseForm(); renderPurchase(); renderInventory(); logAction('新增采购记录', `${name} ×${qty}`); toast('✅ 采购记录已保存,已自动入库');
 }
 function editPurchase(id){
   const p = state.purchases.find(x=>x.id===id);
@@ -1321,7 +2270,7 @@ function editPurchase(id){
   document.getElementById('purchaseCancelBtn').style.display = '';
   switchTab('purchase', document.querySelectorAll('.tab')[1]);
   document.getElementById('purchaseTab').scrollIntoView({behavior:'smooth'});
-  toast('已载入记录，修改后点“保存修改”');
+  toast('已载入记录,修改后点"保存修改"');
 }
 function cancelEditPurchase(){
   editingPurchaseId = null;
@@ -1340,10 +2289,12 @@ function clearPurchaseForm(){
 }
 function renderPurchase(){
   const nf = document.getElementById('pFilterName').value.trim();
+  const cf = document.getElementById('pFilterCode').value.trim();
   const sf = document.getElementById('pFilterSupplier').value.trim();
   const df = document.getElementById('pFilterDate').value;
-  let list = state.purchases.slice().sort((a,b)=>b.date.localeCompare(a.date) || (a.id>b.id?-1:1));
+  let list = state.purchases.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')) || (b.seq||0)-(a.seq||0));
   if(nf) list = list.filter(p=>p.name.includes(nf));
+  if(cf) list = list.filter(p=>(p.code||'').includes(cf));
   if(sf) list = list.filter(p=>p.supplier.includes(sf));
   if(df) list = list.filter(p=>p.date===df);
 
@@ -1364,9 +2315,11 @@ function renderPurchase(){
   }
   let rows = list.map(p=>`
     <tr>
+      <td><input type="checkbox" class="batch-check" data-id="${p.id}"></td>
+      <td>${p.seq||''}</td>
+      <td>${esc(p.code||'')}</td>
       <td>${esc(p.date)}</td>
       <td>${esc(p.name)}</td>
-      <td>${esc(p.code||'')}</td>
       <td>${p.type==='借件'?'<span class="badge badge-amber">借件</span>':'<span class="badge badge-green">采购</span>'}</td>
       <td>${p.qty}</td>
       <td class="money">${fmtMoney(p.price)}</td>
@@ -1380,43 +2333,184 @@ function renderPurchase(){
   const sumAmount = list.reduce((s,p)=>s+p.amount,0);
   const sumQty = list.reduce((s,p)=>s+p.qty,0);
   document.getElementById('purchaseTableWrap').innerHTML = `
-    <table>
+    <table style="table-layout:fixed; min-width:1250px">
+      <colgroup>
+        <col style="width:36px"><col style="width:50px"><col style="width:80px"><col style="width:90px"><col style="width:150px"><col style="width:70px"><col style="width:60px"><col style="width:70px"><col style="width:70px"><col style="width:90px"><col style="width:120px"><col style="width:80px"><col style="width:120px"><col style="width:130px">
+      </colgroup>
       <thead><tr>
-        <th>日期</th><th>名称</th><th>编号</th><th>类型</th><th>数量</th><th>进价</th><th>售价</th><th>金额(进价)</th><th>供应商</th><th>经办人</th><th>备注</th><th>操作</th>
+        <th><input type="checkbox" onclick="toggleAll('purchase', this)"></th><th>序号</th><th>编号</th><th>日期</th><th>名称</th><th>类型</th><th>数量</th><th>进价</th><th>售价</th><th>金额(进价)</th><th>供应商</th><th>经办人</th><th>备注</th><th>操作</th>
       </tr></thead>
       <tbody>${rows}
-        <tr class="summary-row"><td colspan="4">合计（${list.length}笔）</td><td>${sumQty}</td><td></td><td></td><td class="money">${fmtMoney(sumAmount)}</td><td colspan="4"></td></tr>
+        <tr class="summary-row"><td></td><td colspan="5">合计(${list.length}笔)</td><td>${sumQty}</td><td></td><td></td><td class="money">${fmtMoney(sumAmount)}</td><td colspan="4"></td></tr>
       </tbody>
     </table>`;
 }
 function delPurchase(id){
   const p = state.purchases.find(x=>x.id===id);
   if(!p) return;
-  if(!confirm(`确定删除这条采购记录吗？\n删除后会把「${p.name}」的库存扣回 ${p.qty}（因为采购时自动入了库）。`)) return;
-  // 回补库存：采购入库时增加了库存，删除时要把这部分扣回去
+  if(!confirm(`确定删除这条采购记录吗?\n删除后会把「${p.name}」的库存扣回 ${p.qty}(因为采购时自动入了库)。`)) return;
+  // 回补库存:采购入库时增加了库存,删除时要把这部分扣回去
   const inv = findInv(p.name);
   if(inv){
     inv.qty = Math.round((inv.qty - p.qty)*100)/100;
     if(inv.qty < 0) inv.qty = 0;
   }
   state.purchases = state.purchases.filter(x=>x.id!==id);
-  saveData(); renderPurchase(); renderInventory(); toast('已删除（库存已扣回）');
+  logAction('删除采购记录', `${p.name} ×${p.qty}(库存已扣回)`);
+  saveData(); renderPurchase(); renderInventory(); toast('已删除(库存已扣回)');
+}
+// 删除配件:留空=彻底删除(采购记录+库存全部移除);填数字=只删该数量(库存扣减,采购记录按数量递减)
+function delPart(name){
+  if(!name) return;
+  const key = normName(name);
+  const purs = state.purchases.filter(p=>normName(p.name)===key);
+  const inv = state.inventory.find(i=>normName(i.name)===key);
+  const usedRepair = state.repairs.some(r=>r.parts && r.parts.some(pt=>normName(pt.name)===key));
+  const usedSale = (state.sales||[]).some(s=>s.parts && s.parts.some(pt=>normName(pt.name)===key));
+  const usedMsg = (usedRepair || usedSale)
+    ? '\n\n⚠️ 注意:该配件已被历史修理/出库记录使用过,历史单据中的配件名将保留原样(不会被修改)。'
+    : '';
+  // 读取删除数量输入框(留空=全删)
+  const input = document.getElementById('delQty_' + name);
+  const raw = input ? input.value.trim() : '';
+  const n = raw === '' ? null : parseFloat(raw);
+  if(raw !== '' && (isNaN(n) || n < 0)){ toast('请输入有效的删除数量'); return; }
+
+  // 填了数字:只删该数量
+  if(n != null){
+    if(n === 0){ toast('删除数量为 0,无需操作'); return; }
+    if(inv && n > inv.qty){ toast(`删除数量不能超过当前库存 ${inv.qty}`); return; }
+    if(!confirm(`确定删除「${name}」 ${n} 个吗?\n\n当前库存 ${inv?inv.qty:0} → ${inv?Math.round((inv.qty - n)*100)/100:0}\n(采购记录按数量递减)`)) return;
+    // 扣减库存
+    if(inv){
+      inv.qty = Math.round((inv.qty - n)*100)/100;
+      if(inv.qty === 0) state.inventory = state.inventory.filter(i=>normName(i.name)!==key);
+    }
+    // 采购记录按数量递减(从最早的开始扣)
+    let remain = n;
+    const sortedPurs = purs.slice().sort((a,b)=>(a.seq||0)-(b.seq||0));
+    for(const p of sortedPurs){
+      if(remain <= 0) break;
+      if(p.qty <= remain){ remain -= p.qty; state.purchases = state.purchases.filter(x=>x.id!==p.id); }
+      else { p.qty = Math.round((p.qty - remain)*100)/100; remain = 0; }
+    }
+    logAction('删除配件数量', `${name} -${n}(库存剩 ${inv?inv.qty:0})`);
+    saveData(); renderPurchase(); renderInventory(); renderDelPart(); toast(`✅ 已删除 ${n} 个,当前库存 ${inv?inv.qty:0}`);
+    return;
+  }
+
+  // 留空:彻底删除
+  if(!confirm(`确定彻底删除配件「${name}」吗?\n\n· 将删除 ${purs.length} 条采购记录\n· 库存中的该配件将整体移除${inv?`(当前库存 ${inv.qty})`:''}${usedMsg}\n\n此操作不可撤销!`)) return;
+  // 删除该配件的所有采购记录
+  state.purchases = state.purchases.filter(p=>normName(p.name)!==key);
+  // 从库存移除该配件
+  state.inventory = state.inventory.filter(i=>normName(i.name)!==key);
+  // 记入黑名单,防止「重算库存」时被历史单据复活
+  if(!state.deletedParts) state.deletedParts = [];
+  if(!state.deletedParts.includes(key)) state.deletedParts.push(key);
+  logAction('删除配件', `${name}(采购${purs.length}条已删,库存已移除)`);
+  saveData(); renderPurchase(); renderInventory(); renderDelPart(); toast('✅ 配件已删除,库存已同步移除');
+}
+// 一键清理零库存配件:库存<=0 且无采购记录的配件全部移除并加入黑名单
+function cleanZeroStock(){
+  const zero = state.inventory.filter(i=>Number(i.qty) <= 0);
+  if(zero.length === 0){ toast('没有零库存配件需要清理'); return; }
+  if(!confirm(`发现 ${zero.length} 个零库存配件,确定全部清理吗?\n\n清理后这些配件不会再出现在库存中,重算库存也不会复活。\n\n此操作不可撤销!`)) return;
+  if(!state.deletedParts) state.deletedParts = [];
+  zero.forEach(i=>{
+    const k = normName(i.name);
+    if(!state.deletedParts.includes(k)) state.deletedParts.push(k);
+  });
+  state.inventory = state.inventory.filter(i=>Number(i.qty) > 0);
+  logAction('清理零库存配件', `共 ${zero.length} 个`);
+  saveData(); renderPurchase(); renderInventory(); renderDelPart(); toast(`✅ 已清理 ${zero.length} 个零库存配件`);
+}
+// 全选/取消全选
+function toggleDelPartAll(cb){
+  document.querySelectorAll('.delpart-check').forEach(c=>{ c.checked = cb.checked; });
+}
+// 批量删除选中的配件
+function batchDelPart(){
+  const checked = Array.from(document.querySelectorAll('.delpart-check:checked'));
+  if(checked.length === 0){ toast('请先勾选要删除的配件'); return; }
+  const names = checked.map(c=>c.value);
+  if(!confirm(`确定彻底删除选中的 ${names.length} 个配件吗?\n\n· 每个配件将删除其所有采购记录\n· 库存中的这些配件将整体移除\n· 历史修理/出库单据保留原样\n\n此操作不可撤销!`)) return;
+  const keys = names.map(n=>normName(n));
+  if(!state.deletedParts) state.deletedParts = [];
+  keys.forEach(k=>{ if(!state.deletedParts.includes(k)) state.deletedParts.push(k); });
+  state.purchases = state.purchases.filter(p=>!keys.includes(normName(p.name)));
+  state.inventory = state.inventory.filter(i=>!keys.includes(normName(i.name)));
+  logAction('批量删除配件', `${names.length} 个`);
+  saveData(); renderPurchase(); renderInventory(); renderDelPart(); toast(`✅ 已批量删除 ${names.length} 个配件`);
+}
+// 渲染「删除配件」子界面:列出所有配件(去重),带删除按钮
+function renderDelPart(){
+  const wrap = document.getElementById('delPartTableWrap');
+  if(!wrap) return;
+  const nameKw = (document.getElementById('delPartFilterName').value||'').trim();
+  const codeKw = (document.getElementById('delPartFilterCode').value||'').trim();
+  // 配件来源:库存 + 采购记录(按名称去重)
+  const map = new Map();
+  state.inventory.forEach(i=>{
+    const k = normName(i.name);
+    if(!map.has(k)) map.set(k, { name: i.name, code: i.code||'', qty: i.qty||0, sale: i.sale||0, cost: i.cost||0, purCount: 0 });
+    else { const o=map.get(k); if(i.code) o.code=i.code; }
+  });
+  state.purchases.forEach(p=>{
+    const k = normName(p.name);
+    if(!map.has(k)) map.set(k, { name: p.name, code: p.code||'', qty: 0, sale: p.sale||0, cost: p.price||0, purCount: 0 });
+    map.get(k).purCount++;
+  });
+  let list = Array.from(map.values()).sort((a,b)=>{
+    // 与库存一览一致:有编号的按编号升序,没编号的排最后(同组内按名称排)
+    const ca = (a.code||'').trim(), cb = (b.code||'').trim();
+    if(ca && !cb) return -1;
+    if(!ca && cb) return 1;
+    if(!ca && !cb) return a.name.localeCompare(b.name,'zh');
+    const na = parseFloat(ca), nb = parseFloat(cb);
+    if(!isNaN(na) && !isNaN(nb)) return na - nb || a.name.localeCompare(b.name,'zh');
+    return ca.localeCompare(cb,'zh') || a.name.localeCompare(b.name,'zh');
+  });
+  if(nameKw) list = list.filter(x=>x.name.includes(nameKw));
+  if(codeKw) list = list.filter(x=>(x.code||'').includes(codeKw));
+
+  if(list.length===0){
+    wrap.innerHTML = '<div class="empty">暂无配件</div>';
+    return;
+  }
+  const rows = list.map(x=>`
+    <tr>
+      <td><input type="checkbox" class="delpart-check" value="${esc(x.name)}" style="width:auto;height:auto"></td>
+      <td>${esc(x.code||'')}</td>
+      <td style="white-space:normal; word-break:break-all">${esc(x.name)}</td>
+      <td>${x.qty}</td>
+      <td>${x.purCount}</td>
+      <td><input type="number" id="delQty_${esc(x.name)}" min="0" step="0.01" data-decimal placeholder="留空=全删" style="width:90px"></td>
+      <td><button class="btn btn-danger btn-sm" onclick="delPart('${esc(x.name)}')">🗑 删除</button></td>
+    </tr>`).join('');
+  wrap.innerHTML = `
+    <table style="table-layout:fixed; min-width:760px">
+      <colgroup><col style="width:40px"><col style="width:120px"><col style="width:auto"><col style="width:100px"><col style="width:100px"><col style="width:110px"><col style="width:120px"></colgroup>
+      <thead><tr><th><input type="checkbox" id="delPartCheckAll" onchange="toggleDelPartAll(this)" style="width:auto;height:auto"></th><th>编号</th><th>配件名称</th><th>当前库存</th><th>采购记录数</th><th>删除数量</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 function resetPurchaseFilter(){
   document.getElementById('pFilterName').value='';
+  document.getElementById('pFilterCode').value='';
   document.getElementById('pFilterSupplier').value='';
   document.getElementById('pFilterDate').value='';
   renderPurchase();
 }
 function exportPurchase(){
-  const data = state.purchases.map(p=>({
-    '日期':p.date,'名称':p.name,'编号':p.code||'','类型':p.type||'采购','数量':p.qty,'进价(元)':p.price,'售价(元)':p.sale,
+  const data = state.purchases.slice().sort((a,b)=>(a.seq||0)-(b.seq||0)).map(p=>({
+    '序号':p.seq||'','日期':p.date,'名称':p.name,'编号':p.code||'','类型':p.type||'采购','数量':p.qty,'进价(元)':p.price,'售价(元)':p.sale,
     '金额(元)':p.amount,'供应商':p.supplier,'经办人':p.buyer,'备注':p.note
   }));
   exportSheet(data, '采购统计');
 }
 
-// ================= 配件出库（销售） =================
+// ================= 配件出库(销售) =================
 let editingSaleId = null;
 let saleRowSeq = 0;
 
@@ -1429,11 +2523,11 @@ function addSaleRow(partName, partQty, partPrice){
   div.style.cssText = 'display:flex;gap:8px;align-items:flex-start;';
   div.innerHTML = `
     <div class="part-autocomplete">
-      <input class="part-name" placeholder="输入配件名（自动联想）" value="${esc(partName||'')}" autocomplete="off">
+      <input class="part-name" placeholder="输入配件名(自动联想)" value="${esc(partName||'')}" autocomplete="off">
       <div class="part-suggest"></div>
     </div>
-    <input type="number" class="part-qty" min="0" step="0.01" placeholder="数量" value="${partQty||''}" style="width:90px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">
-    <input type="number" class="part-price" min="0" step="0.01" placeholder="单价(元)" value="${partPrice!=null?partPrice:''}" style="width:100px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">
+    <input type="number" class="part-qty" min="0" step="any" data-decimal placeholder="数量" value="${partQty||''}" style="width:90px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">
+    <input type="number" class="part-price" min="0" step="any" data-decimal placeholder="单价(元)" value="${partPrice!=null?partPrice:''}" style="width:100px;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box">
     <span class="part-sale" style="min-width:150px;color:var(--red);font-weight:600;font-size:13px;white-space:nowrap;padding-top:10px"></span>
     <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove();recalcSaleTotal()">✕</button>
   `;
@@ -1472,7 +2566,7 @@ function showSaleRow(div){
   const qty = parseFloat(div.querySelector('.part-qty').value)||0;
   const priceEl = div.querySelector('.part-price');
   const inv = findInv(name);
-  // 自动带出售价（仅当单价为空且库存有售价时）
+  // 自动带出售价(仅当单价为空且库存有售价时)
   if(inv && inv.sale>0 && !priceEl.value){
     priceEl.value = inv.sale;
   }
@@ -1480,7 +2574,7 @@ function showSaleRow(div){
   const el = div.querySelector('.part-sale');
   const stock = inv ? `库存 ${inv.qty}` : '⚠ 库存无此配件';
   if(qty>0 && price>0){
-    el.textContent = `${stock} · ¥${price} × ${qty} = ¥${(price*qty).toFixed(2)}`;
+    el.textContent = `${stock} · ¥${price} × ${qty} = ¥${fmtMoney(price*qty)}`;
   }else{
     el.textContent = name ? stock : '';
   }
@@ -1508,7 +2602,11 @@ function collectSaleParts(){
     const name = row.querySelector('.part-name').value.trim();
     const qty = parseFloat(row.querySelector('.part-qty').value);
     const price = parseFloat(row.querySelector('.part-price').value)||0;
-    if(name && qty>0) parts.push({ name, qty, price });
+    if(name && qty>0){
+      const inv = findInv(name);
+      const cost = inv && inv.cost!=null ? inv.cost : 0; // 进价快照(用于成本核算)
+      parts.push({ name, qty, price, cost });
+    }
   });
   return parts;
 }
@@ -1522,12 +2620,12 @@ function addSale(){
 
   if(editingSaleId){
     const old = state.sales.find(s=>s.id===editingSaleId);
-    if(old && old.parts){ old.parts.forEach(p=>stockIn(p.name, p.qty)); } // 归还旧库存
-    // 校验新库存
+    // 先校验新库存,通过后再归还旧库存(避免校验失败时旧库存已被归还)
     for(const p of parts){
       const inv = findInv(p.name);
-      if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足，无法保存`); return; }
+      if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足,无法保存`); return; }
     }
+    if(old && old.parts){ old.parts.forEach(p=>stockIn(p.name, p.qty)); } // 归还旧库存
     for(const p of parts){ stockOut(p.name, p.qty); }
     Object.assign(old, {
       customer, parts, total,
@@ -1538,14 +2636,14 @@ function addSale(){
     editingSaleId = null;
     document.getElementById('saleSaveBtn').textContent = '💾 保存出库单';
     document.getElementById('saleCancelBtn').style.display = 'none';
-    saveData(); clearSaleForm(); renderSale(); renderInventory(); toast('✅ 出库单已更新');
+    saveData(); clearSaleForm(); renderSale(); renderInventory(); logAction('更新出库单', `${customer} ¥${total}`); toast('✅ 出库单已更新');
     return;
   }
 
   // 校验库存
   for(const p of parts){
     const inv = findInv(p.name);
-    if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足，无法保存`); return; }
+    if(!inv || inv.qty < p.qty){ toast(`⚠️ 配件「${p.name}」库存不足,无法保存`); return; }
   }
   for(const p of parts){ stockOut(p.name, p.qty); }
   state.sales.push({
@@ -1554,7 +2652,7 @@ function addSale(){
     handler: document.getElementById('sHandler').value.trim(),
     note: document.getElementById('sNote').value.trim(),
   });
-  saveData(); clearSaleForm(); renderSale(); renderInventory(); toast('✅ 出库单已保存，库存已扣减');
+  saveData(); clearSaleForm(); renderSale(); renderInventory(); logAction('新增出库单', `${customer} ¥${total}`); toast('✅ 出库单已保存,库存已扣减');
 }
 
 function editSale(id){
@@ -1575,7 +2673,7 @@ function editSale(id){
   document.getElementById('saleCancelBtn').style.display = '';
   switchTab('sale', document.querySelectorAll('.tab')[2]);
   document.getElementById('saleTab').scrollIntoView({behavior:'smooth'});
-  toast('已载入出库单，修改后点“保存修改”');
+  toast('已载入出库单,修改后点"保存修改"');
 }
 
 function cancelEditSale(){
@@ -1606,14 +2704,9 @@ function renderSale(){
   if(df) list = list.filter(s=>s.date===df);
 
   const totalAmount = state.sales.reduce((s,x)=>s+x.total,0);
-  const thisMonth = today().slice(0,7);
-  const monthAmount = state.sales.filter(s=>s.date.startsWith(thisMonth)).reduce((s,x)=>s+x.total,0);
-  const customerCount = new Set(state.sales.map(s=>s.customer).filter(Boolean)).size;
   document.getElementById('saleStats').innerHTML = `
     <div class="stat"><div class="num">${state.sales.length}</div><div class="lbl">总出库单数</div></div>
     <div class="stat"><div class="num money">${fmtMoney(totalAmount)}</div><div class="lbl">总出库金额</div></div>
-    <div class="stat"><div class="num money">${fmtMoney(monthAmount)}</div><div class="lbl">本月出库金额</div></div>
-    <div class="stat"><div class="num">${customerCount}</div><div class="lbl">客户数量</div></div>
   `;
 
   if(list.length===0){
@@ -1624,6 +2717,7 @@ function renderSale(){
     const partsStr = (s.parts&&s.parts.length)? s.parts.map(p=>`${p.name}×${p.qty}`).join('、') : '';
     return `
     <tr>
+      <td><input type="checkbox" class="batch-check" data-id="${s.id}"></td>
       <td>${esc(s.date)}</td>
       <td>${esc(s.customer)}</td>
       <td>${esc(partsStr)}</td>
@@ -1635,22 +2729,26 @@ function renderSale(){
   }).join('');
   const sumAmount = list.reduce((s,x)=>s+x.total,0);
   document.getElementById('saleTableWrap').innerHTML = `
-    <table>
+    <table style="table-layout:fixed; min-width:900px">
+      <colgroup>
+        <col style="width:36px"><col style="width:90px"><col style="width:160px"><col style="width:220px"><col style="width:90px"><col style="width:80px"><col style="width:150px"><col style="width:130px">
+      </colgroup>
       <thead><tr>
-        <th>日期</th><th>客户/收货单位</th><th>出库配件</th><th>金额</th><th>经手人</th><th>备注</th><th>操作</th>
+        <th><input type="checkbox" onclick="toggleAll('sale', this)"></th><th>日期</th><th>客户/收货单位</th><th>出库配件</th><th>金额</th><th>经手人</th><th>备注</th><th>操作</th>
       </tr></thead>
       <tbody>${rows}
-        <tr class="summary-row"><td colspan="3">合计（${list.length}单）</td><td class="money">${fmtMoney(sumAmount)}</td><td colspan="3"></td></tr>
+        <tr class="summary-row"><td></td><td colspan="3">合计(${list.length}单)</td><td class="money">${fmtMoney(sumAmount)}</td><td colspan="3"></td></tr>
       </tbody>
     </table>`;
 }
 
 function delSale(id){
-  if(!confirm('确定删除这条出库单吗？删除后所用配件会回补库存。')) return;
+  if(!confirm('确定删除这条出库单吗?删除后所用配件会回补库存。')) return;
   const s = state.sales.find(x=>x.id===id);
   if(s && s.parts){ s.parts.forEach(p=>stockIn(p.name, p.qty)); }
   state.sales = state.sales.filter(x=>x.id!==id);
-  saveData(); renderSale(); renderInventory(); toast('已删除（配件已回补库存）');
+  logAction('删除出库单', `${s?s.customer:''} ¥${s?s.total:0}(配件已回补)`);
+  saveData(); renderSale(); renderInventory(); toast('已删除(配件已回补库存)');
 }
 
 function resetSaleFilter(){
@@ -1660,7 +2758,7 @@ function resetSaleFilter(){
 }
 
 function exportSale(){
-  const data = state.sales.map(s=>({
+  const data = state.sales.slice().sort((a,b)=>a.date.localeCompare(b.date) || (a.id>b.id?1:-1)).map(s=>({
     '日期':s.date,'客户/收货单位':s.customer,
     '出库配件':(s.parts&&s.parts.length)? s.parts.map(p=>`${p.name}×${p.qty}`).join('、') : '',
     '金额(元)':s.total,'经手人':s.handler,'备注':s.note
@@ -1671,92 +2769,143 @@ function exportSale(){
 // ================= 库存查看 =================
 function renderInventory(){
   const kw = document.getElementById('invFilter').value.trim();
+  const codeKw = document.getElementById('invFilterCode').value.trim();
   const onlyLow = document.getElementById('invOnlyLow').checked;
-  let list = state.inventory.slice().sort((a,b)=>a.name.localeCompare(b.name,'zh'));
+  let list = state.inventory.slice().sort((a,b)=>{
+    // 有编号的按编号升序,没编号的排最后(同组内按名称排)
+    const ca = (a.code||'').trim(), cb = (b.code||'').trim();
+    if(ca && !cb) return -1;
+    if(!ca && cb) return 1;
+    if(!ca && !cb) return a.name.localeCompare(b.name,'zh');
+    const na = parseFloat(ca), nb = parseFloat(cb);
+    if(!isNaN(na) && !isNaN(nb)) return na - nb || a.name.localeCompare(b.name,'zh');
+    return ca.localeCompare(cb,'zh') || a.name.localeCompare(b.name,'zh');
+  });
   if(kw) list = list.filter(i=>i.name.includes(kw));
-  if(onlyLow) list = list.filter(i=>i.qty<=0);
+  if(codeKw) list = list.filter(i=>(i.code||'').includes(codeKw));
+  if(onlyLow) list = list.filter(i=>i.qty<LOW_STOCK);
 
   const totalKinds = state.inventory.length;
-  const lowCount = state.inventory.filter(i=>i.qty<=0).length;
+  const lowCount = state.inventory.filter(i=>i.qty<LOW_STOCK).length;
   const totalQty = state.inventory.reduce((s,i)=>s+i.qty,0);
   document.getElementById('inventoryStats').innerHTML = `
-    <div class="stat"><div class="num">${totalKinds}</div><div class="lbl">配件种类</div></div>
-    <div class="stat"><div class="num">${totalQty}</div><div class="lbl">库存总量</div></div>
-    <div class="stat"><div class="num" style="color:${lowCount>0?'var(--red)':'var(--green)'}">${lowCount}</div><div class="lbl">缺货/告急配件</div></div>
+    <div class="stat" style="cursor:pointer" onclick="showInventoryDetail('kinds')" title="点击查看配件种类"><div class="num">${totalKinds}</div><div class="lbl">配件种类</div></div>
+    <div class="stat" style="cursor:pointer" onclick="showInventoryDetail('qty')" title="点击查看库存明细"><div class="num">${totalQty}</div><div class="lbl">库存总量</div></div>
+    <div class="stat" style="cursor:pointer" onclick="showInventoryDetail('low')" title="点击查看告急配件"><div class="num" style="color:${lowCount>0?'var(--red)':'var(--green)'}">${lowCount}</div><div class="lbl">缺货/告急配件</div></div>
   `;
 
   if(list.length===0){
-    document.getElementById('inventoryTableWrap').innerHTML = '<div class="empty">暂无库存数据（采购配件后会自动入库）</div>';
+    document.getElementById('inventoryTableWrap').innerHTML = '<div class="empty">暂无库存数据(采购配件后会自动入库)</div>';
     return;
   }
   const rows = list.map(i=>{
-    const low = i.qty<=0;
+    const empty = i.qty<=0;
+    const low = i.qty>0 && i.qty<LOW_STOCK;
     return `
     <tr>
-      <td>${esc(i.name)}</td>
       <td>${esc(i.code||'')}</td>
+      <td style="white-space:normal; word-break:break-all">${esc(i.name)}</td>
       <td>${i.qty}</td>
       <td class="money">${i.sale?fmtMoney(i.sale):'-'}</td>
-      <td>${low?'<span class="badge badge-amber">缺货</span>':'<span class="badge badge-green">正常</span>'}</td>
+      <td class="money">${i.cost?fmtMoney(i.cost):'-'}</td>
+      <td>${empty?'<span class="badge badge-amber">缺货</span>':(low?`<span class="badge badge-amber">告急(${i.qty})</span>`:'<span class="badge badge-green">正常</span>')}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="manualStock('${esc(i.name)}')">调整</button></td>
     </tr>`;
   }).join('');
   document.getElementById('inventoryTableWrap').innerHTML = `
-    <table>
-      <thead><tr><th>配件名称</th><th>编号</th><th>当前库存</th><th>售价</th><th>状态</th><th>操作</th></tr></thead>
+    <table style="table-layout:fixed">
+      <colgroup><col style="width:12%"><col style="width:30%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:14%"><col style="width:8%"></colgroup>
+      <thead><tr><th>编号</th><th>配件名称</th><th>当前库存</th><th>售价</th><th>进价</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// 库存统计卡片:点击查看配件明细
+function showInventoryDetail(type){
+  const inv = state.inventory.slice();
+  let title = '', list = [], cols = [];
+  if(type==='kinds'){
+    title = '配件种类明细(共 ' + inv.length + ' 种)';
+    list = inv.slice().sort((a,b)=>(a.code||'').localeCompare(b.code||'','zh') || a.name.localeCompare(b.name,'zh'));
+    cols = ['编号','配件名称','当前库存'];
+  } else if(type==='qty'){
+    title = '库存总量明细(共 ' + inv.reduce((s,i)=>s+i.qty,0) + ' 件)';
+    list = inv.slice().sort((a,b)=>b.qty-a.qty);
+    cols = ['编号','配件名称','当前库存'];
+  } else if(type==='low'){
+    list = inv.filter(i=>i.qty<=0).sort((a,b)=>a.name.localeCompare(b.name,'zh'));
+    title = '缺货/告急配件(共 ' + list.length + ' 种)';
+    cols = ['编号','配件名称','当前库存'];
+  }
+  const body = document.getElementById('invModalBody');
+  document.getElementById('invModalTitle').textContent = title;
+  if(list.length===0){
+    body.innerHTML = '<div class="empty">暂无数据</div>';
+  } else {
+    const rows = list.map(i=>`<tr><td>${esc(i.code||'')}</td><td>${esc(i.name)}</td><td style="${i.qty<LOW_STOCK?'color:#c0392b;font-weight:700':''}">${i.qty}</td></tr>`).join('');
+    body.innerHTML = `<table style="table-layout:fixed"><colgroup><col style="width:15%"><col style="width:60%"><col style="width:25%"></colgroup><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  document.getElementById('invModal').classList.add('show');
+}
+function closeInvModal(){
+  document.getElementById('invModal').classList.remove('show');
 }
 
 // 手动调整库存
 function manualStock(name){
   const cur = name ? (findInv(name)?.qty ?? 0) : 0;
-  const nm = name ? name : prompt('请输入配件名称：');
+  const nm = name ? name : prompt('请输入配件名称:');
   if(nm===null || !nm.trim()) return;
-  const val = prompt(`配件「${nm}」当前库存：${cur}\n请输入调整后的库存数量：`, cur);
+  const val = prompt(`配件「${nm}」当前库存:${cur}\n请输入调整后的库存数量:`, cur);
   if(val===null) return;
   const q = parseFloat(val);
   if(isNaN(q) || q<0){ toast('请输入有效数量'); return; }
   let inv = findInv(nm.trim());
-  if(inv){ inv.qty = q; } else { state.inventory.push({ name: nm.trim(), qty: q, unit:'' }); }
+  if(inv){ inv.qty = q; } else { state.inventory.push({ name: nm.trim(), qty: q, unit:'', sale:0, code:'', cost:0 }); }
+  logAction('手动调整库存', `${nm.trim()} → ${q}`);
   saveData(); renderInventory(); toast('✅ 库存已调整');
 }
-// 重算库存：根据 采购入库 - 出库 - 修理扣减（借件不算）重新计算
+// 重算库存:根据 采购入库 - 出库 - 修理扣减(借件不算)重新计算
 function recalcInventory(){
-  if(!confirm('重算库存会根据「采购 - 出库 - 修理」重新计算所有配件库存。\n\n⚠️ 注意：如果你之前手动调整过库存，手动调整的数值会被覆盖。\n\n确定继续吗？')) return;
-  const map = new Map(); // normName -> {name, sale, code, qty}
+  if(!confirm('重算库存会根据「采购 - 出库 - 修理」重新计算所有配件库存。\n\n⚠️ 注意:如果你之前手动调整过库存,手动调整的数值会被覆盖。\n\n确定继续吗?')) return;
+  const map = new Map(); // normName -> {name, sale, code, cost, qty}
   const getKey = n=>normName(n);
-  const ensure = (name, sale, code)=>{
+  const black = new Set((state.deletedParts||[]).map(k=>String(k)));
+  const ensure = (name, sale, code, cost)=>{
     const k = getKey(name);
-    if(!map.has(k)) map.set(k, { name, sale: sale||0, code: code||'', qty: 0 });
+    if(black.has(k)) return null;   // 已彻底删除的配件不复生
+    if(!map.has(k)) map.set(k, { name, sale: sale||0, code: code||'', cost: cost||0, qty: 0 });
     const o = map.get(k);
     if(sale && sale>0) o.sale = sale;
     if(code) o.code = code;
+    if(cost != null && cost >= 0) o.cost = cost;
     return o;
   };
-  // 1. 采购入库（+）
-  state.purchases.forEach(p=>{ if(p.name && p.qty) ensure(p.name, p.sale, p.code).qty += p.qty; });
-  // 2. 配件出库（-）
-  (state.sales||[]).forEach(s=>{ (s.parts||[]).forEach(p=>{ if(p.name && p.qty) ensure(p.name, 0, '').qty -= p.qty; }); });
-  // 3. 修理扣减（-，借件不扣）
-  state.repairs.forEach(r=>{ (r.parts||[]).forEach(p=>{ if(p.name && p.qty && p.type!=='借件') ensure(p.name, 0, '').qty -= p.qty; }); });
-  // 4. 保留没有出现在任何单据中的库存（手动添加的）
+  // 1. 采购入库(+)
+  state.purchases.forEach(p=>{ if(p.name && p.qty){ const o=ensure(p.name, p.sale, p.code, p.price); if(o) o.qty += p.qty; } });
+  // 2. 配件出库(-)
+  (state.sales||[]).forEach(s=>{ (s.parts||[]).forEach(p=>{ if(p.name && p.qty){ const o=ensure(p.name, 0, '', p.cost); if(o) o.qty -= p.qty; } }); });
+  // 3. 修理扣减(-,借件不扣)
+  state.repairs.forEach(r=>{ (r.parts||[]).forEach(p=>{ if(p.name && p.qty && p.type!=='借件'){ const o=ensure(p.name, 0, ''); if(o) o.qty -= p.qty; } }); });
+  // 4. 保留没有出现在任何单据中的库存(手动添加的),已删除配件跳过
   state.inventory.forEach(i=>{
     const k = getKey(i.name);
-    if(!map.has(k)) map.set(k, { name: i.name, sale: i.sale||0, code: i.code||'', qty: i.qty||0 });
+    if(black.has(k)) return;
+    if(!map.has(k)) map.set(k, { name: i.name, sale: i.sale||0, code: i.code||'', cost: i.cost||0, qty: i.qty||0 });
   });
-  // 5. 转回数组（四舍五入）
+  // 5. 转回数组(四舍五入)
   const newInv = [];
   map.forEach(o=>{
     o.qty = Math.round(o.qty*100)/100;
-    newInv.push({ name: o.name, qty: o.qty, unit:'', sale: o.sale||0, code: o.code||'' });
+    newInv.push({ name: o.name, qty: o.qty, unit:'', sale: o.sale||0, code: o.code||'', cost: o.cost||0 });
   });
   state.inventory = newInv;
+  logAction('重算库存', `共 ${newInv.length} 种配件`);
   saveData(); renderInventory(); toast('✅ 库存已重算完成');
 }
 function exportInventory(){
   const data = state.inventory.map(i=>({
-    '配件名称':i.name,'编号':i.code||'','当前库存':i.qty,'售价(元)':i.sale||'', '状态':i.qty<=0?'缺货':'正常'
+    '编号':i.code||'','配件名称':i.name,'当前库存':i.qty,'售价(元)':i.sale||'', '状态':i.qty<=0?'缺货':(i.qty<LOW_STOCK?'告急':'正常')
   }));
   exportSheet(data, '库存查看');
 }
@@ -1766,6 +2915,7 @@ let editingVehicleId = null;
 function addVehicle(){
   const plate = document.getElementById('vPlate').value.trim();
   if(!plate){ toast('请填写车牌号'); return; }
+  const company = document.getElementById('vCompany').value.trim();
   const driver = document.getElementById('vDriver').value.trim();
   const note = document.getElementById('vNote').value.trim();
   // 检查车牌是否已存在
@@ -1773,43 +2923,47 @@ function addVehicle(){
   if(editingVehicleId){
     const old = state.vehicles.find(v=>v.id===editingVehicleId);
     if(old){
-      Object.assign(old, { plate, driver, note });
+      Object.assign(old, { plate, company, driver, note });
     }
     editingVehicleId = null;
     document.getElementById('vehicleSaveBtn').textContent = '保存车辆';
     document.getElementById('vehicleCancelBtn').style.display = 'none';
     saveData(); clearVehicleForm(); renderVehicle(); toast('✅ 车辆已更新');
+    fillPlateList(); fillCustomerList();
     return;
   }
   if(dup && dup.id!==editingVehicleId){ toast(`⚠️ 车牌「${plate}」已在台账中`); return; }
-  state.vehicles.push({ id: uid(), plate, driver, note });
+  state.vehicles.push({ id: uid(), plate, company, driver, note });
   saveData(); clearVehicleForm(); renderVehicle(); toast('✅ 车辆已保存');
+  fillPlateList(); fillCustomerList();
 }
-// 批量添加车辆（每行：车牌号 或 车牌号+逗号/顿号+司机）
+// 批量添加车辆(每行:车牌号 或 车牌号+逗号/顿号+司机)
 function batchAddVehicle(){
   const raw = document.getElementById('vBatch').value;
+  const defCompany = document.getElementById('vBatchCompany').value.trim();
   const defDriver = document.getElementById('vBatchDriver').value.trim();
   const lines = raw.split(/[\n\r]+/).map(s=>s.trim()).filter(Boolean);
   if(lines.length===0){ toast('请输入车牌号'); return; }
   let added = 0, skipped = 0, noPlate = 0;
   lines.forEach(line=>{
-    // 拆分车牌号和司机（支持逗号、顿号、分号、多个空格）
-    const parts = line.split(/[,，、;；\t]+|\s{2,}/).map(s=>s.trim()).filter(Boolean);
+    // 拆分车牌号和司机(支持逗号、顿号、分号、多个空格)
+    const parts = line.split(/[,,、;;\t]+|\s{2,}/).map(s=>s.trim()).filter(Boolean);
     const plate = parts[0] || '';
     const driver = parts[1] || defDriver || '';
     if(!plate){ noPlate++; return; }
     if(state.vehicles.some(v=>normName(v.plate)===normName(plate))){ skipped++; return; }
-    state.vehicles.push({ id: uid(), plate, driver, note:'' });
+    state.vehicles.push({ id: uid(), plate, company: defCompany, driver, note:'' });
     added++;
   });
   saveData(); clearVehicleBatch(); renderVehicle();
   let msg = `✅ 新增 ${added} 辆`;
-  if(skipped) msg += `，跳过重复 ${skipped} 辆`;
-  if(noPlate) msg += `，${noPlate} 行无车牌号`;
+  if(skipped) msg += `,跳过重复 ${skipped} 辆`;
+  if(noPlate) msg += `,${noPlate} 行无车牌号`;
   toast(msg);
 }
 function clearVehicleBatch(){
   document.getElementById('vBatch').value='';
+  document.getElementById('vBatchCompany').value='';
   document.getElementById('vBatchDriver').value='';
 }
 function editVehicle(id){
@@ -1817,6 +2971,7 @@ function editVehicle(id){
   if(!v) return;
   editingVehicleId = id;
   document.getElementById('vPlate').value = v.plate||'';
+  document.getElementById('vCompany').value = v.company||'';
   document.getElementById('vDriver').value = v.driver||'';
   document.getElementById('vNote').value = v.note||'';
   document.getElementById('vehicleSaveBtn').textContent = '💾 更新车辆';
@@ -1828,20 +2983,22 @@ function cancelEditVehicle(){
   clearVehicleForm();
 }
 function clearVehicleForm(){
-  ['vPlate','vDriver','vNote'].forEach(id=>document.getElementById(id).value='');
+  ['vPlate','vCompany','vDriver','vNote'].forEach(id=>document.getElementById(id).value='');
   editingVehicleId = null;
   document.getElementById('vehicleSaveBtn').textContent = '保存车辆';
   document.getElementById('vehicleCancelBtn').style.display = 'none';
 }
 function delVehicle(id){
-  if(!confirm('确定删除这辆车吗？')) return;
-  state.vehicles = state.vehicles.filter(v=>v.id!==id);
+  if(!confirm('确定删除这辆车吗?')) return;
+  const v = state.vehicles.find(x=>x.id===id);
+  state.vehicles = state.vehicles.filter(x=>x.id!==id);
+  logAction('删除车辆', `${v?v.plate:''} ${v&&v.driver?('司机'+v.driver):''}`);
   saveData(); renderVehicle(); toast('已删除');
 }
 function renderVehicle(){
   const kw = document.getElementById('vFilter').value.trim();
   let list = state.vehicles.slice().sort((a,b)=>a.plate.localeCompare(b.plate,'zh'));
-  if(kw) list = list.filter(v=>v.plate.includes(kw) || (v.driver||'').includes(kw));
+  if(kw) list = list.filter(v=>v.plate.includes(kw) || (v.company||'').includes(kw) || (v.driver||'').includes(kw));
 
   const total = state.vehicles.length;
   document.getElementById('vehicleStats').innerHTML = `
@@ -1850,7 +3007,7 @@ function renderVehicle(){
   `;
 
   if(list.length===0){
-    document.getElementById('vehicleTableWrap').innerHTML = '<div class="empty">暂无车辆（添加后，上报修理时未登记车辆会提醒）</div>';
+    document.getElementById('vehicleTableWrap').innerHTML = '<div class="empty">暂无车辆(添加后,上报修理时未登记车辆会提醒)</div>';
     return;
   }
   const rows = list.map(v=>{
@@ -1861,7 +3018,9 @@ function renderVehicle(){
     const repStr = repCount? `${repCount}次 / ${fmtMoney(repCost)}` : '无';
     return `
     <tr>
+      <td><input type="checkbox" class="batch-check" data-id="${v.id}"></td>
       <td>${esc(v.plate)}</td>
+      <td>${esc(v.company||'')}</td>
       <td>${esc(v.driver||'')}</td>
       <td>${repStr}</td>
       <td>${esc(v.note||'')}</td>
@@ -1872,8 +3031,11 @@ function renderVehicle(){
     </tr>`;
   }).join('');
   document.getElementById('vehicleTableWrap').innerHTML = `
-    <table>
-      <thead><tr><th>车牌号</th><th>司机/负责人</th><th>修理记录</th><th>备注</th><th>操作</th></tr></thead>
+    <table style="table-layout:fixed; min-width:900px">
+      <colgroup>
+        <col style="width:36px"><col style="width:120px"><col style="width:180px"><col style="width:110px"><col style="width:130px"><col style="width:160px"><col style="width:170px">
+      </colgroup>
+      <thead><tr><th><input type="checkbox" onclick="toggleAll('vehicle', this)"></th><th>车牌号</th><th>公司</th><th>司机/负责人</th><th>修理记录</th><th>备注</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -1881,7 +3043,7 @@ function exportVehicle(){
   const data = state.vehicles.map(v=>{
     const reps = state.repairs.filter(r=>normName(r.plate)===normName(v.plate));
     return {
-      '车牌号':v.plate,'司机/负责人':v.driver||'',
+      '车牌号':v.plate,'公司':v.company||'','司机/负责人':v.driver||'',
       '修理次数':reps.length,'修理金额(元)':reps.reduce((s,r)=>s+(r.cost||0),0),
       '备注':v.note||''
     };
@@ -1897,7 +3059,7 @@ function isCompanyVehicle(plate){
 // ================= 财务 =================
 function renderFinance(){
   const month = document.getElementById('fFilterMonth').value; // 如 2026-10
-  // 按月份筛选（不选则全部）
+  // 按月份筛选(不选则全部)
   let repairs = state.repairs;
   let purchases = state.purchases;
   let expenses = state.expenses;
@@ -1911,19 +3073,27 @@ function renderFinance(){
 
   const repairIncome = repairs.reduce((s,r)=>s+(r.cost||0),0);
   const saleIncome = sales.reduce((s,x)=>s+(x.total||0),0);
+  // 出库成本 = 出库配件进价 × 数量(按出库时保存的进价快照)
+  const saleCost = sales.reduce((s,x)=> s + (x.parts||[]).reduce((a,p)=> a + (p.cost||0)*(p.qty||0), 0), 0);
   const income = repairIncome + saleIncome;
   const purchaseExpense = purchases.reduce((s,p)=>s+(p.amount||0),0);
   const otherExpense = expenses.reduce((s,e)=>s+(e.amount||0),0);
   const commissionExpense = repairs.reduce((s,r)=>s+((r.labor||0)*commRate(r)/100),0);
-  const expense = purchaseExpense + otherExpense + commissionExpense;
+  const expense = purchaseExpense + otherExpense + commissionExpense + saleCost;
   const profit = income - expense;
+  // 应收账款(未收的修理金额)与实收账款(已收的修理金额)
+  const receivable = repairs.filter(r=>r.paid!=='已收').reduce((s,r)=>s+(r.cost||0),0);
+  const received = repairs.filter(r=>r.paid==='已收').reduce((s,r)=>s+(r.cost||0),0);
 
   document.getElementById('financeStats').innerHTML = `
-    <div class="stat"><div class="num money" style="color:var(--green)">${fmtMoney(income)}</div><div class="lbl">总收入（修理+出库）</div></div>
+    <div class="stat"><div class="num money" style="color:var(--green)">${fmtMoney(income)}</div><div class="lbl">总收入(修理+出库)</div></div>
     <div class="stat"><div class="num money" style="color:var(--green)">${fmtMoney(repairIncome)}</div><div class="lbl">其中修理收入</div></div>
     <div class="stat"><div class="num money" style="color:var(--green)">${fmtMoney(saleIncome)}</div><div class="lbl">其中出库收入</div></div>
+    <div class="stat"><div class="num money" style="color:var(--amber)">${fmtMoney(receivable)}</div><div class="lbl">应收账款(未收)</div></div>
+    <div class="stat"><div class="num money" style="color:var(--green)">${fmtMoney(received)}</div><div class="lbl">实收账款(已收)</div></div>
     <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(expense)}</div><div class="lbl">总支出</div></div>
     <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(purchaseExpense)}</div><div class="lbl">其中采购</div></div>
+    <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(saleCost)}</div><div class="lbl">其中出库成本</div></div>
     <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(commissionExpense)}</div><div class="lbl">其中工时提成</div></div>
     <div class="stat"><div class="num money" style="color:var(--red)">${fmtMoney(otherExpense)}</div><div class="lbl">其中日常开支</div></div>
     <div class="stat"><div class="num money" style="color:${profit>=0?'var(--green)':'var(--red)'}">${fmtMoney(profit)}</div><div class="lbl">利润</div></div>
@@ -1932,27 +3102,29 @@ function renderFinance(){
 
   // 按月汇总表格
   const months = new Map();
+  const mk = (m)=> { if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, saleCost:0, repairCount:0, receivable:0, received:0}); return months.get(m); };
   state.repairs.forEach(r=>{
     const m = (r.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).income += r.cost||0;
-    months.get(m).commission += (r.labor||0)*commRate(r)/100;
-    months.get(m).repairCount++;
+    const v = mk(m);
+    v.income += r.cost||0;
+    v.commission += (r.labor||0)*commRate(r)/100;
+    v.repairCount++;
+    if(r.paid==='已收') v.received += r.cost||0;
+    else v.receivable += r.cost||0;
   });
   state.purchases.forEach(p=>{
     const m = (p.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).purchase += p.amount||0;
+    mk(m).purchase += p.amount||0;
   });
   state.expenses.forEach(e=>{
     const m = (e.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).other += e.amount||0;
+    mk(m).other += e.amount||0;
   });
   (state.sales||[]).forEach(s=>{
     const m = (s.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).income += s.total||0;
+    const v = mk(m);
+    v.income += s.total||0;
+    v.saleCost += (s.parts||[]).reduce((a,p)=> a + (p.cost||0)*(p.qty||0), 0);
   });
   const monthList = Array.from(months.entries()).sort((a,b)=>b[0].localeCompare(a[0]));
 
@@ -1960,28 +3132,75 @@ function renderFinance(){
     document.getElementById('financeTableWrap').innerHTML = '<div class="empty">暂无数据</div>';
   } else {
     const rows = monthList.map(([m,v])=>{
-      const exp = v.purchase + v.other + v.commission;
+      const exp = v.purchase + v.other + v.commission + v.saleCost;
       const p = v.income - exp;
       return `<tr>
       <td>${esc(m)}</td>
       <td>${v.repairCount}</td>
       <td class="money">${fmtMoney(v.income)}</td>
+      <td class="money" style="color:var(--amber)">${fmtMoney(v.receivable)}</td>
+      <td class="money" style="color:var(--green)">${fmtMoney(v.received)}</td>
       <td class="money">${fmtMoney(v.purchase)}</td>
       <td class="money">${fmtMoney(v.commission)}</td>
       <td class="money">${fmtMoney(v.other)}</td>
       <td class="money">${fmtMoney(exp)}</td>
       <td class="money" style="color:${p>=0?'var(--green)':'var(--red)'}">${fmtMoney(p)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="delMonth('${esc(m)}')">删除</button></td>
     </tr>`;
     }).join('');
     document.getElementById('financeTableWrap').innerHTML = `
-    <table>
-      <thead><tr><th>月份</th><th>修理车数</th><th>收入</th><th>采购支出</th><th>工时提成</th><th>日常开支</th><th>总支出</th><th>利润</th></tr></thead>
+    <table style="table-layout:fixed; min-width:1000px">
+      <colgroup><col style="width:90px"><col style="width:80px"><col style="width:90px"><col style="width:100px"><col style="width:100px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:90px"></colgroup>
+      <thead><tr><th>月份</th><th>修理车数</th><th>收入</th><th>应收(未收)</th><th>实收(已收)</th><th>采购支出</th><th>工时提成</th><th>日常开支</th><th>总支出</th><th>利润</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
   }
 
   renderExpense();
   renderWorkerStat();
+  renderLog();
+}
+// 操作日志
+function renderLog(){
+  const logs = state.logs || [];
+  const wrap = document.getElementById('logWrap');
+  if(!logs.length){ wrap.innerHTML = '<div class="empty">暂无操作记录</div>'; return; }
+  const list = logs.slice().reverse().slice(0,100);
+  wrap.innerHTML = `<table style="table-layout:fixed"><colgroup><col style="width:150px"><col style="width:130px"><col style="width:auto"></colgroup><thead><tr><th>时间</th><th>操作</th><th>详情</th></tr></thead><tbody>` +
+    list.map(l=>`<tr><td>${esc(l.timeStr||'')}</td><td>${esc(l.action||'')}</td><td>${esc(l.detail||'')}</td></tr>`).join('') +
+    `</tbody></table>`;
+}
+function clearLogs(){
+  if(!confirm('确定清空所有操作日志吗?')) return;
+  state.logs = [];
+  saveData(); renderLog();
+  toast('✅ 日志已清空');
+}
+// 删除某个月的所有记录(修理+采购+开支+出库),并回补/扣回库存
+function delMonth(month){
+  const reps = state.repairs.filter(r=>(r.date||'').startsWith(month));
+  const purs = state.purchases.filter(p=>(p.date||'').startsWith(month));
+  const exps = state.expenses.filter(e=>(e.date||'').startsWith(month));
+  const sals = (state.sales||[]).filter(s=>(s.date||'').startsWith(month));
+  const total = reps.length + purs.length + exps.length + sals.length;
+  if(total===0){ toast('该月无记录'); return; }
+  if(!confirm(`⚠️ 确定删除 ${month} 这个月的全部记录吗?\n\n修理记录:${reps.length} 条\n采购记录:${purs.length} 条\n日常开支:${exps.length} 条\n出库单:${sals.length} 条\n\n删除后:\n· 修理所用配件会回补库存\n· 采购入库的配件会扣回库存\n· 出库的配件会回补库存\n\n此操作不可撤销!`)) return;
+
+  // 回补修理所用配件(借件不回补)
+  reps.forEach(r=>{ if(r.parts) r.parts.forEach(p=>{ if(p.type!=='借件') stockIn(p.name, p.qty); }); });
+  // 扣回采购入库的配件
+  purs.forEach(p=>{ const inv = findInv(p.name); if(inv){ inv.qty = Math.round((inv.qty - p.qty)*100)/100; if(inv.qty<0) inv.qty=0; } });
+  // 回补出库配件
+  sals.forEach(s=>{ if(s.parts) s.parts.forEach(p=>stockIn(p.name, p.qty)); });
+
+  state.repairs = state.repairs.filter(r=>!(r.date||'').startsWith(month));
+  state.purchases = state.purchases.filter(p=>!(p.date||'').startsWith(month));
+  state.expenses = state.expenses.filter(e=>!(e.date||'').startsWith(month));
+  state.sales = (state.sales||[]).filter(s=>!(s.date||'').startsWith(month));
+
+  logAction('删除整月记录', `${month}(修理${reps.length}/采购${purs.length}/开支${exps.length}/出库${sals.length})`);
+  saveData(); renderRepair(); renderPurchase(); renderSale(); renderInventory(); renderFinance();
+  toast('✅ 已删除该月全部记录');
 }
 function resetFinanceFilter(){
   document.getElementById('fFilterMonth').value='';
@@ -1999,6 +3218,7 @@ function addExpense(){
   if(!date){ toast('请填写日期'); return; }
   state.expenses.push({ id:uid(), item, amount, date, note });
   saveData();
+  logAction('新增开支', `${item} ¥${amount}`);
   document.getElementById('eItem').value='';
   document.getElementById('eAmount').value='';
   document.getElementById('eNote').value='';
@@ -2006,8 +3226,10 @@ function addExpense(){
   toast('✅ 已记录开支');
 }
 function delExpense(id){
-  if(!confirm('确定删除这条开支记录吗？')) return;
-  state.expenses = state.expenses.filter(e=>e.id!==id);
+  if(!confirm('确定删除这条开支记录吗?')) return;
+  const e = state.expenses.find(x=>x.id===id);
+  state.expenses = state.expenses.filter(x=>x.id!==id);
+  logAction('删除开支记录', `${e?e.item:''} ¥${e?e.amount:0}`);
   saveData(); renderFinance(); toast('已删除');
 }
 function renderExpense(){
@@ -2025,7 +3247,8 @@ function renderExpense(){
       <td><button class="btn btn-danger btn-sm" onclick="delExpense('${e.id}')">删除</button></td>
     </tr>`).join('');
   document.getElementById('expenseTableWrap').innerHTML = `
-    <table>
+    <table style="table-layout:fixed; min-width:700px">
+      <colgroup><col style="width:110px"><col style="width:200px"><col style="width:110px"><col style="width:240px"><col style="width:110px"></colgroup>
       <thead><tr><th>日期</th><th>项目</th><th>金额</th><th>备注</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -2067,29 +3290,48 @@ function renderWorkerStat(){
       <td class="money">${fmtMoney(o.weldLabor)}</td>
       <td class="money" style="color:var(--red)">${fmtMoney(o.comm)}</td>
       <td class="money">${fmtMoney(o.income)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="showWorkerDetail('${esc(w)}')">明细</button></td>
     </tr>`;
   }).join('');
   const totalLabor = list.reduce((s,[,o])=>s+o.labor,0);
   const totalWeld = list.reduce((s,[,o])=>s+o.weldLabor,0);
   const totalComm = list.reduce((s,[,o])=>s+o.comm,0);
   document.getElementById('workerStatWrap').innerHTML = `
-    <table>
-      <thead><tr><th>修理工</th><th>修理车数</th><th>工时费合计</th><th>其中电焊工时费</th><th>提成合计</th><th>收入合计</th></tr></thead>
+    <table style="table-layout:fixed; min-width:800px">
+      <colgroup><col style="width:110px"><col style="width:90px"><col style="width:110px"><col style="width:130px"><col style="width:100px"><col style="width:110px"><col style="width:90px"></colgroup>
+      <thead><tr><th>修理工</th><th>修理车数</th><th>工时费合计</th><th>其中电焊工时费</th><th>提成合计</th><th>收入合计</th><th>明细</th></tr></thead>
       <tbody>${rows}
-        <tr class="summary-row"><td>合计</td><td>${list.reduce((s,[,o])=>s+o.count,0)}</td><td class="money">${fmtMoney(totalLabor)}</td><td class="money">${fmtMoney(totalWeld)}</td><td class="money" style="color:var(--red)">${fmtMoney(totalComm)}</td><td class="money">${fmtMoney(list.reduce((s,[,o])=>s+o.income,0))}</td></tr>
+        <tr class="summary-row"><td>合计</td><td>${list.reduce((s,[,o])=>s+o.count,0)}</td><td class="money">${fmtMoney(totalLabor)}</td><td class="money">${fmtMoney(totalWeld)}</td><td class="money" style="color:var(--red)">${fmtMoney(totalComm)}</td><td class="money">${fmtMoney(list.reduce((s,[,o])=>s+o.income,0))}</td><td></td></tr>
       </tbody>
     </table>`;
 }
-// 判断是否属于电焊类（含“电焊”“焊”“焊接”都算）
+// 查看某修理工的按月/按车明细
+function showWorkerDetail(worker){
+  const list = state.repairs.filter(r=>(r.worker||'').trim()===worker).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!list.length){ toast('暂无记录'); return; }
+  // 按月汇总
+  const months = new Map();
+  list.forEach(r=>{
+    const m = (r.date||'').slice(0,7) || '未知';
+    if(!months.has(m)) months.set(m, {count:0, labor:0, comm:0, income:0});
+    const o = months.get(m);
+    o.count++; o.labor += r.labor||0; o.comm += (r.labor||0)*commRate(r)/100; o.income += r.cost||0;
+  });
+  const monthLines = Array.from(months.entries()).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,o])=>`  ${m}:${o.count}台,工时${o.labor},提成${o.comm},收入${o.income}`);
+  const totalComm = list.reduce((s,r)=>s+(r.labor||0)*commRate(r)/100,0);
+  const totalLabor = list.reduce((s,r)=>s+(r.labor||0),0);
+  alert(`👷 ${worker} 提成明细\n\n【按月汇总】\n${monthLines.join('\n')}\n\n【合计】工时 ${totalLabor} 元,提成 ${totalComm} 元\n\n(如需逐车明细,可到「修理统计」按修理工筛选查看)`);
+}
+// 判断是否属于电焊类(含"电焊""焊""焊接"都算)
 function isWeld(text){
   return /电焊|焊接|焊/.test(text);
 }
-// 自动识别提成类型（根据修理项目+备注）
+// 自动识别提成类型(根据修理项目+备注)
 function autoDetectCommType(){
-  const text = ((document.getElementById('rItem').value||'') + ' ' + (document.getElementById('rNote').value||''));
+  const text = ((collectItems()||'') + ' ' + (document.getElementById('rNote').value||''));
   return isWeld(text) ? '电焊' : '维修';
 }
-// 判断某条修理记录的提成比例：优先用记录里存的类型，否则实时识别
+// 判断某条修理记录的提成比例:优先用记录里存的类型,否则实时识别
 function commRate(r){
   let type = r.commType;
   if(type!=='电焊' && type!=='维修'){
@@ -2098,7 +3340,7 @@ function commRate(r){
   if(type==='电焊') return (state.weldRate!=null? state.weldRate : 0);
   return (state.repairRate!=null? state.repairRate : 0);
 }
-// 判断某条记录是否电焊类（优先用存的类型）
+// 判断某条记录是否电焊类(优先用存的类型)
 function isWeldRecord(r){
   if(r.commType==='电焊') return true;
   if(r.commType==='维修') return false;
@@ -2111,7 +3353,7 @@ function saveCommission(){
   state.weldRate = (isNaN(wv)||wv<0)? 0 : wv;
   saveData();
   renderFinance();
-  toast('✅ 提成比例已保存：维修 ' + state.repairRate + '%，电焊 ' + state.weldRate + '%');
+  toast('✅ 提成比例已保存:维修 ' + state.repairRate + '%,电焊 ' + state.weldRate + '%');
 }
 function exportWorkerStat(){
   const month = document.getElementById('fFilterMonth').value;
@@ -2138,30 +3380,32 @@ function exportWorkerStat(){
 
 function exportFinance(){
   const months = new Map();
+  const mk = (m)=> { if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, saleCost:0, repairCount:0, receivable:0, received:0}); return months.get(m); };
   state.repairs.forEach(r=>{
     const m = (r.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).income += r.cost||0;
-    months.get(m).commission += (r.labor||0)*commRate(r)/100;
-    months.get(m).repairCount++;
+    const v = mk(m);
+    v.income += r.cost||0;
+    v.commission += (r.labor||0)*commRate(r)/100;
+    v.repairCount++;
+    if(r.paid==='已收') v.received += r.cost||0;
+    else v.receivable += r.cost||0;
   });
   state.purchases.forEach(p=>{
     const m = (p.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).purchase += p.amount||0;
+    mk(m).purchase += p.amount||0;
   });
   state.expenses.forEach(e=>{
     const m = (e.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).other += e.amount||0;
+    mk(m).other += e.amount||0;
   });
   (state.sales||[]).forEach(s=>{
     const m = (s.date||'').slice(0,7) || '未知';
-    if(!months.has(m)) months.set(m, {income:0, purchase:0, other:0, commission:0, repairCount:0});
-    months.get(m).income += s.total||0;
+    const v = mk(m);
+    v.income += s.total||0;
+    v.saleCost += (s.parts||[]).reduce((a,p)=> a + (p.cost||0)*(p.qty||0), 0);
   });
   const data = Array.from(months.entries()).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,v])=>({
-    '月份':m,'修理车数':v.repairCount,'收入(元)':v.income,'采购支出(元)':v.purchase,'工时提成(元)':v.commission,'日常开支(元)':v.other,'总支出(元)':v.purchase+v.commission+v.other,'利润(元)':v.income-v.purchase-v.commission-v.other
+    '月份':m,'修理车数':v.repairCount,'收入(元)':v.income,'应收未收(元)':v.receivable,'实收已收(元)':v.received,'采购支出(元)':v.purchase,'工时提成(元)':v.commission,'日常开支(元)':v.other,'出库成本(元)':Math.round(v.saleCost*100)/100,'总支出(元)':Math.round((v.purchase+v.commission+v.other+v.saleCost)*100)/100,'利润(元)':Math.round((v.income-v.purchase-v.commission-v.other-v.saleCost)*100)/100
   }));
   exportSheet(data, '财务汇总');
 }
@@ -2170,6 +3414,32 @@ function exportFinance(){
 function exportSheet(data, name){
   if(!data.length){ toast('没有数据可导出'); return; }
   const ws = XLSX.utils.json_to_sheet(data);
+  // 所有单元格(表头+数据)水平垂直居中
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for(let R=range.s.r; R<=range.e.r; R++){
+    for(let C=range.s.c; C<=range.e.c; C++){
+      const addr = XLSX.utils.encode_cell({r:R, c:C});
+      const cell = ws[addr];
+      if(!cell) continue;
+      cell.s = { alignment:{ horizontal:'center', vertical:'center', wrapText:true } };
+    }
+  }
+  // 列宽自适应(取每列最长内容,中文按2字符算)
+  const cols = [];
+  for(let C=range.s.c; C<=range.e.c; C++){
+    let max = 0;
+    for(let R=range.s.r; R<=range.e.r; R++){
+      const addr = XLSX.utils.encode_cell({r:R, c:C});
+      const cell = ws[addr];
+      if(!cell || cell.v==null) continue;
+      const s = String(cell.v);
+      let w = 0;
+      for(const ch of s){ w += (ch.charCodeAt(0) > 255) ? 2 : 1; }
+      if(w > max) max = w;
+    }
+    cols.push({ wch: Math.min(max + 2, 40) });
+  }
+  ws['!cols'] = cols;
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, name);
   XLSX.writeFile(wb, `${name}_${today()}.xlsx`);
@@ -2177,14 +3447,94 @@ function exportSheet(data, name){
 }
 
 // ================= 备份/恢复 =================
-function backup(){
-  const blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'});
+let backupDirHandle = null; // 用户选定的备份文件夹句柄
+const BACKUP_DIR_KEY = STORE_KEY + '_backupDir';
+
+// 选择备份文件夹(File System Access API,仅 Chrome/Edge)
+async function pickBackupFolder(){
+  // 如果已授权过文件夹,直接备份,不再重复弹选择器
+  if(backupDirHandle && typeof backupDirHandle.getFileHandle === 'function'){
+    await backup(false);
+    return;
+  }
+  if(!window.showDirectoryPicker){ toast('❌ 当前浏览器不支持,请用 Chrome 或 Edge 打开'); return; }
+  try{
+    const handle = await window.showDirectoryPicker({ mode:'readwrite' });
+    backupDirHandle = handle;
+    // 记住文件夹(句柄不能存 localStorage,只能存名字做提示)
+    try{ localStorage.setItem(BACKUP_DIR_KEY, handle.name); }catch(e){}
+    toast(`✅ 已设置备份文件夹:${handle.name}`);
+    // 立即备份一份到该文件夹
+    await backup(true);
+  }catch(e){
+    if(e && e.name !== 'AbortError') toast('❌ 选择文件夹失败');
+  }
+}
+
+// 尝试恢复上次的文件夹句柄(浏览器可能已缓存权限,但句柄本身无法持久化,需重新授权)
+function savedBackupDirName(){
+  try{ return localStorage.getItem(BACKUP_DIR_KEY) || ''; }catch(e){ return ''; }
+}
+
+async function backup(auto){
+  const json = JSON.stringify(state, null, 2);
+  const fname = `修理厂数据备份_${today()}.json`;
+  // 如果已选定备份文件夹,优先写入文件夹
+  if(backupDirHandle && typeof backupDirHandle.getFileHandle === 'function'){
+    try{
+      const fh = await backupDirHandle.getFileHandle(fname, { create:true });
+      const w = await fh.createWritable();
+      await w.write(json);
+      await w.close();
+      toast(auto ? `✅ 已自动备份到「${backupDirHandle.name}」` : `✅ 已备份到「${backupDirHandle.name}」`);
+      return;
+    }catch(e){
+      console.error(e);
+      // 写入失败则回退到下载方式
+    }
+  }
+  // 回退:下载方式
+  const blob = new Blob([json], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `修理厂数据备份_${today()}.json`;
+  a.download = fname;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast('✅ 已备份');
+  toast(auto ? '✅ 今日已自动备份(已下载)' : '✅ 已备份(已下载)');
+}
+// 每日自动备份:当天第一次打开时下载一份(避免清缓存丢数据)
+function dailyAutoBackup(){
+  try{
+    const KEY = STORE_KEY + '_lastBackup';
+    const last = localStorage.getItem(KEY);
+    const todayStr = today();
+    if(last === todayStr) return; // 今天已备份过
+    localStorage.setItem(KEY, todayStr);
+    // 延迟一点,等页面加载完成再触发下载
+    setTimeout(()=>{ backup(true); }, 1500);
+  }catch(e){}
+}
+// 查看/恢复自动备份快照
+function showSnapshots(){
+  const KEY = STORE_KEY + '_snapshots';
+  let snaps = [];
+  try{ snaps = JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ snaps = []; }
+  if(!snaps.length){ toast('暂无自动备份(每次保存会自动生成,最多保留最近 5 次)'); return; }
+  const list = snaps.map((s,i)=>{
+    const d = new Date(s.time);
+    const t = d.toLocaleString('zh-CN', {hour12:false});
+    return `${i+1}. ${t}(${(s.data.repairs||[]).length} 条修理 / ${(s.data.purchases||[]).length} 条采购)`;
+  }).join('\n');
+  const idx = prompt(`🕘 自动备份快照(最近 ${snaps.length} 次):\n\n${list}\n\n输入序号恢复对应快照,输入 0 取消。`, '0');
+  if(idx==null) return;
+  const n = parseInt(idx,10);
+  if(isNaN(n) || n<=0 || n>snaps.length){ return; }
+  const snap = snaps[n-1];
+  if(!confirm(`确定恢复到 ${new Date(snap.time).toLocaleString('zh-CN',{hour12:false})} 的快照吗?\n当前数据会被覆盖。`)) return;
+  state = JSON.parse(JSON.stringify(snap.data));
+  if(!state.logs) state.logs = [];
+  saveData(); renderRepair(); renderPurchase(); renderInventory(); renderVehicle(); renderFinance();
+  toast('✅ 已恢复到自动备份');
 }
 function restore(e){
   const file = e.target.files[0];
@@ -2194,15 +3544,149 @@ function restore(e){
     try{
       const data = JSON.parse(reader.result);
       if(!data.repairs || !data.purchases){ toast('❌ 文件格式不正确'); return; }
+      // 确认弹窗:显示将覆盖的数据量(全部模块对比)
+      const cnt = o=>(o||[]).length;
+      const ok = confirm(`⚠️ 即将用导入的数据覆盖当前数据!\n\n${'模块'.padEnd(6,' ')} 当前 → 导入\n${'修理'.padEnd(7,' ')} ${cnt(state.repairs)} → ${cnt(data.repairs)}\n${'采购'.padEnd(7,' ')} ${cnt(state.purchases)} → ${cnt(data.purchases)}\n${'出库'.padEnd(7,' ')} ${cnt(state.sales)} → ${cnt(data.sales)}\n${'库存'.padEnd(7,' ')} ${cnt(state.inventory)} → ${cnt(data.inventory)}\n${'车辆'.padEnd(7,' ')} ${cnt(state.vehicles)} → ${cnt(data.vehicles)}\n${'开支'.padEnd(7,' ')} ${cnt(state.expenses)} → ${cnt(data.expenses)}\n\n点「确定」覆盖,点「取消」放弃导入。`);
+      if(!ok){ e.target.value=''; return; }
       if(!data.inventory) data.inventory = [];
       if(!data.expenses) data.expenses = [];
       if(!data.sales) data.sales = [];
+      if(!data.logs) data.logs = [];
       if(!data.commissionRate && data.commissionRate!==0) data.commissionRate = 50;
       if(!data.repairRate && data.repairRate!==0) data.repairRate = (data.commissionRate!=null? data.commissionRate : 50);
       if(!data.weldRate && data.weldRate!==0) data.weldRate = (data.commissionRate!=null? data.commissionRate : 50);
       if(data.purchases) data.purchases.forEach(p=>{ if(!p.type) p.type = '采购'; });
+      // 覆盖前先备份当前数据到快照(防止误恢复后无法找回)
+      try{
+        const KEY = STORE_KEY + '_snapshots';
+        let snaps = [];
+        try{ snaps = JSON.parse(localStorage.getItem(KEY)) || []; }catch(err){ snaps = []; }
+        const snap = JSON.parse(JSON.stringify(state)); delete snap.logs;
+        snaps.push({ time: Date.now(), label: today() + ' ' + new Date().toTimeString().slice(0,8) + '(恢复前)', data: snap });
+        if(snaps.length > 5) snaps = snaps.slice(snaps.length-5);
+        localStorage.setItem(KEY, JSON.stringify(snaps));
+      }catch(err){}
       state = data; saveData(); renderRepair(); renderPurchase(); renderInventory(); toast('✅ 数据已恢复');
     }catch(err){ toast('❌ 文件解析失败'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ================= 数据同步(手机端 ↔ 电脑端) =================
+// 导出完整数据文件(含全部模块),可发到另一台设备导入合并
+function exportSyncFile(){
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `修理厂同步数据_${today()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+  toast('✅ 同步文件已导出,可发送到另一台设备导入');
+}
+
+// 打开同步面板
+function openSyncModal(){
+  const old = document.getElementById('syncModal');
+  if(old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'syncModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999';
+  modal.onclick = function(e){ if(e.target===modal) modal.remove(); };
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;width:92%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#1f6feb;color:#fff">
+        <span style="font-weight:700;font-size:15px">📱 数据同步</span>
+        <button onclick="document.getElementById('syncModal').remove()" style="background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="padding:16px 18px;overflow-y:auto">
+        <p style="margin:0 0 14px;color:#555;font-size:13px;line-height:1.7">
+          用于<b>手机端 ↔ 电脑端</b>数据互传。导出得到一份完整数据文件,发到另一台设备导入即可<b>合并</b>(不会覆盖、不会重复)。
+        </p>
+
+        <div style="border:1px solid #e3e8ef;border-radius:10px;padding:14px;margin-bottom:12px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">📤 第一步:导出数据</div>
+          <div style="font-size:12px;color:#888;margin-bottom:10px">在本设备生成完整数据文件(含修理/采购/出库/库存/车辆/开支等全部模块)。</div>
+          <button class="btn btn-green" style="width:100%" onclick="exportSyncFile()">⬇ 导出同步文件</button>
+        </div>
+
+        <div style="border:1px solid #e3e8ef;border-radius:10px;padding:14px;margin-bottom:12px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">📥 第二步:导入并合并</div>
+          <div style="font-size:12px;color:#888;margin-bottom:10px">选择另一台设备导出的同步文件,按记录编号去重合并(重复记录自动跳过)。</div>
+          <button class="btn btn-primary" style="width:100%" onclick="document.getElementById('syncFile').click()">📂 选择文件导入</button>
+        </div>
+
+        <div style="padding:12px;background:#fff8e6;border-radius:8px;font-size:12px;color:#8a6d00;line-height:1.7">
+          <b>⚠ 使用说明:</b><br>
+          · 导出文件为 .json,可通过微信/QQ/网盘发送到另一台设备。<br>
+          · 导入时按「记录唯一编号」去重,已存在的记录自动跳过,新记录追加。<br>
+          · 双向同步:手机导出→电脑导入,或电脑导出→手机导入,效果一致。<br>
+          · 建议每天收工后,由外出统计人员导出发给电脑端合并归档。
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+// 导入同步文件并合并(按 id 去重,不覆盖)
+function syncImport(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(){
+    try{
+      const data = JSON.parse(reader.result);
+      if(!data || (data.repairs==null && data.purchases==null)){ toast('❌ 文件格式不正确'); e.target.value=''; return; }
+      // 合并前先备份当前数据到快照
+      try{
+        const KEY = STORE_KEY + '_snapshots';
+        let snaps = [];
+        try{ snaps = JSON.parse(localStorage.getItem(KEY)) || []; }catch(err){ snaps = []; }
+        const snap = JSON.parse(JSON.stringify(state)); delete snap.logs;
+        snaps.push({ time: Date.now(), label: today() + ' ' + new Date().toTimeString().slice(0,8) + '(同步前)', data: snap });
+        if(snaps.length > 5) snaps = snaps.slice(snaps.length-5);
+        localStorage.setItem(KEY, JSON.stringify(snaps));
+      }catch(err){}
+
+      // 各模块按 id 去重合并(以 id 为唯一键;无 id 的记录按整个对象 JSON 去重)
+      const merge = (curArr, incArr)=>{
+        const cur = Array.isArray(curArr)? curArr.slice() : [];
+        const inc = Array.isArray(incArr)? incArr : [];
+        const curIds = new Set(cur.map(x=>x.id!=null? x.id : JSON.stringify(x)));
+        let added = 0;
+        inc.forEach(x=>{
+          const key = x.id!=null? x.id : JSON.stringify(x);
+          if(!curIds.has(key)){ cur.push(x); curIds.add(key); added++; }
+        });
+        return { arr: cur, added };
+      };
+
+      const mods = ['repairs','purchases','sales','vehicles','inventory','expenses','settlements','deletedParts'];
+      let totalAdded = 0;
+      const addedDetail = [];
+      mods.forEach(k=>{
+        const r = merge(state[k], data[k]);
+        state[k] = r.arr;
+        if(r.added > 0){ totalAdded += r.added; addedDetail.push(`${k}:+${r.added}`); }
+      });
+      // 设置项(提成比例等):仅在当前为空时采用导入值,避免覆盖
+      ['commissionRate','repairRate','weldRate'].forEach(k=>{
+        if((state[k]==null || state[k]===0) && data[k]!=null && data[k]!==0) state[k] = data[k];
+      });
+
+      saveData();
+      renderRepair(); renderPurchase(); renderInventory(); renderVehicle(); renderFinance();
+      document.getElementById('syncModal') && document.getElementById('syncModal').remove();
+      if(totalAdded === 0){
+        toast('✅ 同步完成,无新增记录(数据已一致)');
+      }else{
+        toast(`✅ 同步完成,新增 ${totalAdded} 条记录(${addedDetail.join(', ')})`);
+      }
+    }catch(err){ console.error(err); toast('❌ 文件解析失败'); }
   };
   reader.readAsText(file);
   e.target.value = '';
@@ -2215,22 +3699,40 @@ document.getElementById('eDate').value = today();
 document.getElementById('sDate').value = today();
 document.getElementById('repairRate').value = state.repairRate || 50;
 document.getElementById('weldRate').value = state.weldRate || 50;
-// 工时费变化时，重新计算总计
+// 工时费变化时,重新计算总计
 document.getElementById('rHourPrice').addEventListener('input', recalcTotal);
-// 修理项目/备注变化时，自动预选提成类型（用户手动改过则不覆盖）
-document.getElementById('rItem').addEventListener('input', function(){ if(!commTypeTouched) document.getElementById('rCommType').value = autoDetectCommType(); });
+// 修理项目/备注变化时,自动预选提成类型(用户手动改过则不覆盖)
+// (项目行在 addItemRow 里已绑定 input 事件)
 document.getElementById('rNote').addEventListener('input', function(){ if(!commTypeTouched) document.getElementById('rCommType').value = autoDetectCommType(); });
-// 用户手动改提成类型时，标记为已改，不再自动覆盖
+// 用户手动改提成类型时,标记为已改,不再自动覆盖
 document.getElementById('rCommType').addEventListener('change', function(){ commTypeTouched = true; });
+// 车牌输入:自动带出客户名称/司机
+const _rPlateEl = document.getElementById('rPlate');
+_rPlateEl.addEventListener('input', onPlateInput);
+_rPlateEl.addEventListener('change', onPlateInput);
+// 初始化车牌/客户联想
+fillPlateList();
+fillCustomerList();
+// 把车牌类输入框升级为自动联想(输数字即可弹出候选)
+['rPlate','vPlate','sCustomer','settlePlate','settRecPlate','rFilterPlate','sFilterCustomer'].forEach(id=>enhancePlateInput(id));
+// 采购统计:配件编号、材料名称、供应商自动联想
+enhanceSuggestInput('pCode', kw=>findSimilarCodes(kw, 8), null, '无相近编号');
+enhanceSuggestInput('pName', kw=>findSimilarMaterials(kw, 8), nm=>{
+  const inv = findInv(nm);
+  return inv ? [inv.code, inv.qty!=null?`库存 ${inv.qty}`:''].filter(Boolean).join(' · ') : '';
+}, '无相近材料(可直接输入新名称)');
+enhanceSuggestInput('pSupplier', kw=>findSimilarSuppliers(kw, 8), null, '无相近供应商');
+// 修理统计:修理工姓名自动联想
+enhanceSuggestInput('rWorker', kw=>findSimilarWorkers(kw, 8), null, '无相近姓名');
 
-// ================= 键盘导航（回车跳下一个，↑↓上下切换） =================
+// ================= 键盘导航(回车跳下一个,↑↓上下切换) =================
 function bindFormNav(ids){
   const els = ids.map(id=>document.getElementById(id)).filter(Boolean);
   els.forEach((el, idx)=>{
     el.addEventListener('keydown', function(e){
       if(e.key==='Enter'){
         e.preventDefault();
-        // 回车：跳到下一个输入框
+        // 回车:跳到下一个输入框
         const next = els[(idx+1)%els.length];
         if(next) next.focus();
       } else if(e.key==='ArrowDown'){
@@ -2245,23 +3747,219 @@ function bindFormNav(ids){
     });
   });
 }
-bindFormNav(['rWorker','rPlate','rCustomer','rItem','rHourPrice','rCommType','rDate','rOpener','rNote']);
+bindFormNav(['rWorker','rPlate','rCustomer','rHourPrice','rCommType','rDate','rOpener','rNote']);
 bindFormNav(['pName','pCode','pType','pQty','pPrice','pSale','pSupplier','pDate','pBuyer','pNote']);
 
-// 修理项目回车时，优先跳到第一个配件行，否则跳到工时费
-// （覆盖 bindFormNav 对 rItem 的默认 Enter 行为）
+// ===== 车牌/客户联想记忆 =====
+// 填充车牌号联想(来源:车辆台账 + 历史修理记录)
+function fillPlateList(){
+  const dl = document.getElementById('rPlateList');
+  if(!dl) return;
+  const set = new Set();
+  state.vehicles.forEach(v=>{ if(v.plate) set.add(v.plate); });
+  state.repairs.forEach(r=>{ if(r.plate) set.add(r.plate); });
+  dl.innerHTML = Array.from(set).map(p=>`<option value="${esc(p)}"></option>`).join('');
+}
+// 填充客户名称联想(来源:车辆台账公司 + 历史修理记录客户)
+function fillCustomerList(){
+  const dl = document.getElementById('rCustomerList');
+  if(!dl) return;
+  const set = new Set();
+  state.vehicles.forEach(v=>{ if(v.company) set.add(v.company); });
+  state.repairs.forEach(r=>{ if(r.customer) set.add(r.customer); });
+  dl.innerHTML = Array.from(set).map(c=>`<option value="${esc(c)}"></option>`).join('');
+}
+// 车牌输入后:自动带出客户名称(=车辆台账公司)和司机
+function onPlateInput(){
+  const plate = document.getElementById('rPlate').value.trim();
+  const v = state.vehicles.find(x=>normName(x.plate)===normName(plate));
+  if(v){
+    // 客户名称自动填公司(若当前客户为空,或之前就是该公司)
+    const cusEl = document.getElementById('rCustomer');
+    if(!cusEl.value.trim() || cusEl.value.trim()===v.company){
+      cusEl.value = v.company || '';
+    }
+    // 司机自动带出到客户名称(若客户为空),不再单独填驾驶员
+    const cusEl2 = document.getElementById('rCustomer');
+    if(v.driver && !cusEl2.value.trim()){
+      cusEl2.value = v.driver;
+    }
+  }
+}
+
+// 模糊匹配:返回与输入相近的车牌(来源:车辆台账 + 历史修理记录 + 出库记录)
+function findSimilarPlates(keyword, limit){
+  limit = limit || 8;
+  const set = new Set();
+  state.vehicles.forEach(v=>{ if(v.plate) set.add(v.plate); });
+  state.repairs.forEach(r=>{ if(r.plate) set.add(r.plate); });
+  (state.sales||[]).forEach(s=>{ if(s.customer) set.add(s.customer); });
+  const all = Array.from(set);
+  if(!keyword || !keyword.trim()) return all.sort((a,b)=>a.localeCompare(b,'zh')).slice(0,limit);
+  const kw = normName(keyword);
+  const scored = all.map(p=>{
+    const np = normName(p);
+    let score = 0;
+    if(np === kw) score = 1000;
+    else if(np.startsWith(kw)) score = 500 - np.length;
+    else if(np.includes(kw)) score = 300 - np.indexOf(kw);
+    else if(kw.length>=2 && kw.split('').every(ch=>np.includes(ch))) score = 100;
+    return { p, score };
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+  return scored.slice(0,limit).map(x=>x.p);
+}
+// 通用模糊匹配:从候选数组里按相关度排序返回
+function fuzzyMatch(candidates, keyword, limit){
+  limit = limit || 8;
+  const all = Array.from(new Set(candidates.filter(Boolean)));
+  if(!keyword || !keyword.trim()) return all.sort((a,b)=>a.localeCompare(b,'zh')).slice(0,limit);
+  const kw = normName(keyword);
+  const scored = all.map(p=>{
+    const np = normName(p);
+    let score = 0;
+    if(np === kw) score = 1000;
+    else if(np.startsWith(kw)) score = 500 - np.length;
+    else if(np.includes(kw)) score = 300 - np.indexOf(kw);
+    else if(kw.length>=2 && kw.split('').every(ch=>np.includes(ch))) score = 100;
+    return { p, score };
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+  return scored.slice(0,limit).map(x=>x.p);
+}
+// 通用联想:为指定输入框渲染下拉候选(复用配件联想的 CSS)
+// dataProvider(keyword) 返回候选字符串数组; subProvider(value) 返回副标题(可选)
+function renderGenericSuggest(inputEl, dataProvider, subProvider, emptyMsg){
+  const wrap = inputEl.closest('.part-autocomplete');
+  if(!wrap) return;
+  const suggestEl = wrap.querySelector('.part-suggest');
+  const kw = inputEl.value.trim();
+  const list = dataProvider(kw);
+  if(list.length===0){
+    suggestEl.innerHTML = kw ? `<div class="part-suggest-empty">${emptyMsg||'无匹配项'}</div>` : '<div class="part-suggest-empty">暂无记录</div>';
+    suggestEl.classList.add('show');
+    return;
+  }
+  suggestEl.innerHTML = list.map(v=>{
+    const sub = subProvider ? subProvider(v) : '';
+    return `<div class="part-suggest-item" data-val="${esc(v)}">${esc(v)}${sub?`<span class="sub">${esc(sub)}</span>`:''}</div>`;
+  }).join('');
+  suggestEl.classList.add('show');
+  suggestEl.querySelectorAll('.part-suggest-item').forEach(item=>{
+    item.addEventListener('mousedown', function(e){
+      e.preventDefault();
+      inputEl.value = item.dataset.val;
+      suggestEl.classList.remove('show');
+      inputEl.dispatchEvent(new Event('input', {bubbles:true}));
+    });
+  });
+}
+// 把普通 input 升级为联想输入框
+function enhanceSuggestInput(id, dataProvider, subProvider, emptyMsg){
+  const el = document.getElementById(id);
+  if(!el || el.closest('.part-autocomplete')) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'part-autocomplete';
+  wrap.style.cssText = 'position:relative;width:100%';
+  el.parentNode.insertBefore(wrap, el);
+  wrap.appendChild(el);
+  const sug = document.createElement('div');
+  sug.className = 'part-suggest';
+  wrap.appendChild(sug);
+  el.setAttribute('autocomplete','off');
+  const render = ()=>renderGenericSuggest(el, dataProvider, subProvider, emptyMsg);
+  el.addEventListener('input', render);
+  el.addEventListener('focus', render);
+  el.addEventListener('keydown', function(e){
+    const items = Array.from(sug.querySelectorAll('.part-suggest-item'));
+    if(!items.length) return;
+    const cur = items.findIndex(i=>i.classList.contains('active'));
+    if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+      e.preventDefault();
+      let next = cur + (e.key==='ArrowDown'?1:-1);
+      if(next<0) next = items.length-1;
+      if(next>=items.length) next = 0;
+      items.forEach(i=>i.classList.remove('active'));
+      items[next].classList.add('active');
+      items[next].scrollIntoView({block:'nearest'});
+      el.value = items[next].dataset.val;
+      el.dispatchEvent(new Event('input', {bubbles:true}));
+    } else if(e.key==='Enter' && cur>=0){
+      e.preventDefault();
+      el.value = items[cur].dataset.val;
+      sug.classList.remove('show');
+      el.dispatchEvent(new Event('input', {bubbles:true}));
+    } else if(e.key==='Escape'){
+      sug.classList.remove('show');
+    }
+  });
+  document.addEventListener('click', function(e){
+    if(!wrap.contains(e.target)) sug.classList.remove('show');
+  });
+}
+// 配件编号候选(来源:库存 + 采购记录)
+function findSimilarCodes(keyword, limit){
+  const set = new Set();
+  state.inventory.forEach(i=>{ if(i.code) set.add(i.code); });
+  state.purchases.forEach(p=>{ if(p.code) set.add(p.code); });
+  return fuzzyMatch(Array.from(set), keyword, limit);
+}
+// 供应商候选(来源:采购记录)
+function findSimilarSuppliers(keyword, limit){
+  const set = new Set();
+  state.purchases.forEach(p=>{ if(p.supplier) set.add(p.supplier); });
+  return fuzzyMatch(Array.from(set), keyword, limit);
+}
+// 材料/配件名称候选(来源:库存 + 采购记录)
+function findSimilarMaterials(keyword, limit){
+  const set = new Set();
+  state.inventory.forEach(i=>{ if(i.name) set.add(i.name); });
+  state.purchases.forEach(p=>{ if(p.name) set.add(p.name); });
+  return fuzzyMatch(Array.from(set), keyword, limit);
+}
+// 修理工姓名候选(来源:历史修理记录)
+function findSimilarWorkers(keyword, limit){
+  const set = new Set();
+  state.repairs.forEach(r=>{ if(r.worker) set.add(r.worker); });
+  return fuzzyMatch(Array.from(set), keyword, limit);
+}
+// 车牌联想:为指定输入框渲染下拉候选(复用配件联想的 CSS)
+function renderPlateSuggest(inputEl){
+  renderGenericSuggest(inputEl, kw=>findSimilarPlates(kw, 8), p=>{
+    const v = state.vehicles.find(x=>normName(x.plate)===normName(p));
+    return v ? [v.company, v.driver].filter(Boolean).join(' · ') : '';
+  }, '无相近车牌(可直接输入新车牌)');
+}
+// 把普通 input 升级为车牌联想输入框
+function enhancePlateInput(id){
+  enhanceSuggestInput(id, kw=>findSimilarPlates(kw, 8), p=>{
+    const v = state.vehicles.find(x=>normName(x.plate)===normName(p));
+    return v ? [v.company, v.driver].filter(Boolean).join(' · ') : '';
+  }, '无相近车牌(可直接输入新车牌)');
+}
+
+// 常用修理项目联想(基于历史记录去重,按使用频次排序)
+function fillItemList(){
+  const dl = document.getElementById('rItemList');
+  if(!dl) return;
+  const freq = new Map();
+  state.repairs.forEach(r=>{ if(r.item) freq.set(r.item, (freq.get(r.item)||0)+1); });
+  const items = Array.from(freq.entries()).sort((a,b)=>b[1]-a[1]).map(([k])=>k);
+  dl.innerHTML = items.map(i=>`<option value="${esc(i)}"></option>`).join('');
+}
+
+// 修理项目回车时,优先跳到第一个配件行,否则跳到工时费
+// (项目行在 addItemRow 里自行处理 Enter)
 (function(){
-  const rItem = document.getElementById('rItem');
-  const rItemKeydown = function(e){
-    if(e.key==='Enter'){
+  const rItemRows = document.getElementById('rItemRows');
+  if(!rItemRows) return;
+  rItemRows.addEventListener('keydown', function(e){
+    if(e.key==='Enter' && e.target.classList.contains('item-input')){
       e.preventDefault();
       e.stopImmediatePropagation();
       const firstPart = document.querySelector('#repairPartsList .part-name');
       if(firstPart){ firstPart.focus(); }
       else { document.getElementById('rHourPrice').focus(); }
     }
-  };
-  rItem.addEventListener('keydown', rItemKeydown, true); // 捕获阶段优先
+  }, true); // 捕获阶段优先
 })();
 
 renderRepair();
@@ -2270,6 +3968,10 @@ renderInventory();
 clearSaleForm();
 renderSale();
 renderVehicle();
+fillItemList();
+setItemRows(''); // 初始化一行修理项目输入
+addPartRow();   // 初始化一行配件输入
+dailyAutoBackup();
 </script>
 </body>
 </html>
